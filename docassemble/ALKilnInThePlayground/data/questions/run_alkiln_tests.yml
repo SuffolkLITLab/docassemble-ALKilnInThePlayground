@@ -1,0 +1,746 @@
+---
+comment: |
+  For TODOs, see issue https://github.com/SuffolkLITLab/ALKiln/issues/675
+---
+metadata:
+  title: |
+    ALKiln in the Playground
+  short title: |
+    ALKiln
+  description: |
+    Run ALKiln tests on your server. No GitHub required.
+  under: |
+    See guides for writing tests in the [ALKiln documentation](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/automated_integrated_testing).
+---
+features:
+  css: alkiln_playground.css
+---
+mandatory: True
+code: |
+  if not user_has_privilege(['admin', 'developer']):
+    ask_to_log_in
+  
+  if redo_after_stopped_with_invalid_install:
+    invalid_install = True
+    undefine_install_task = True
+    require_restart_install_timer = True
+    undefine('ask_version')
+    undefine('install_failed')
+    redo_after_stopped_with_invalid_install = False
+  
+  if undefine_install_task:
+    undefine('installation_output')
+    undefine_install_task = False
+  
+  if version_error == '':
+    ask_version
+    if wants_install or invalid_install:
+      # Don't install if not needed
+      if started_with_different_version or invalid_install:
+        installation_output
+        # `.wait()` could cause a timeout
+        if installation_output.ready():
+          if installation_output.failed():
+            # If failed after invalid install, even if it was a different failure, start again again. After an invalid install, it _really_ has to be sure to install.
+            if invalid_install:
+              redo_after_stopped_with_invalid_install = True
+            # Otherwise just show a failure message
+            else:
+              invalid_install = False
+              flag_failed_installation
+          else:
+            invalid_install = False
+        else:
+          if require_restart_install_timer:
+            restart_install_timer
+          wait_for_install
+  
+  not_wants_tags
+  tag_expression
+  
+  test_run_output
+  if stopped_early or test_run_output.ready():
+    run_get_files_html
+    remove_tmp_files
+    show_output
+  else:
+    waiting_screen
+---
+####################################
+# Blocker
+####################################
+---
+event: ask_to_log_in
+id: not logged in
+question: |
+  You need to log in as a developer
+subquestion: |
+  To run these tests, you need to be logged into the server where you're keeping the package that you will test. You must be logged in as a developer or an admin.
+buttons:
+  Log into this server: signin
+---
+####################################
+# Installation
+####################################
+---
+event: stop_install_early
+code: |
+  redo_after_stopped_with_invalid_install = True
+  installation_output.revoke()
+---
+code: |
+  redo_after_stopped_with_invalid_install = False
+---
+code: |
+  invalid_install = False
+---
+code: |
+  undefine_install_task = False
+---
+code: |
+  import subprocess
+  import json
+  
+  def filter_versions_greater_or_equal(versions: list[str], minimum: str = "0.0.0") -> list[str]:
+    '''Given a list of strings of versions, return a new list of
+    versions at or above the given minimum version.'''
+    filtered = []
+    try:
+      minimum = [int(s) for s in minimum.split(".", maxsplit=2)]
+    except Exception as err:
+      raise ValueError(f"expected a version string in the form major.minor.patch, but got {minimum}") from err
+    for version in versions:
+      maj, minor, patch_and_prelease, = version.split(".", maxsplit=2)
+      # If there is a prerelease attached, get rid of it in 
+      # order to make the comparison
+      if "-" in patch_and_prelease:
+        patch, pre = patch_and_prelease.split("-", maxsplit=1)
+      else:
+        patch = patch_and_prelease
+      version_parts = [int(maj), int(minor), int(patch)]
+      if version_parts >= minimum:
+          filtered.append(version)
+    return filtered
+  
+  # all versions, but not working: https://stackoverflow.com/a/41416032/14144258
+  # puzzle of above: @>4.0.0 seems to get all versions @>5.0.0 seems to get none (only have a single pre-release right now). When none are found, we get err 'JSONDecodeError: Expecting value: line 1 column 1 (char 0)'
+  result = subprocess.run(['npm', 'view', "@suffolklitlab/alkiln", 'versions', '--json'], check=False, capture_output=True)
+  if result.returncode != 0:
+    log('=== ALKiln === Error getting ALKiln versions:')
+    log(result.stderr.decode("utf-8"))
+    alkiln_version_list = []
+    version_error = result.stderr.decode("utf-8")
+  else:
+    versions = json.loads(result.stdout.decode())
+    alkiln_version_list = filter_versions_greater_or_equal(reversed(versions), '4.0.0')
+    version_error = ''
+---
+id: which task with no alkiln installed
+if: |
+  'Could not find' in get_installed_version() or invalid_install
+question: |
+  Install ALKiln
+subquestion: |
+  It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and then cancelled installing the version. You need a new version of ALKiln.
+  
+  Which version of ALKiln do you want to install? The top choice is the most recent version. While it is installing you will have to avoid the following:
+  
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Otherwise causing the server to reload, restart, or stop
+fields:
+  - ALKiln version: version_to_install
+    choices:
+      code: |
+        alkiln_version_list
+continue button field: ask_version
+---
+id: which task with prexisting version
+if: |
+  not 'Could not find' in get_installed_version() and not invalid_install
+question: |
+  ALKiln version
+subquestion: |
+  The server's current version of ALKiln is:[BR]
+  **${ get_installed_version() }**
+  
+  Do you want to install a different version of ALKiln before testing? **While it is installing you will have to avoid the following**:
+  
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Otherwise causing the server to reload, restart, or stop
+  
+fields:
+  - Install a different verison of ALKiln: wants_install
+    datatype: yesno
+  - ALKiln version: version_to_install
+    show if: wants_install
+    choices:
+      code: |
+        alkiln_version_list
+continue button field: ask_version
+---
+code: |
+  wants_install = True
+---
+code: |
+  if version_to_install != get_installed_version():
+    started_with_different_version = True
+  else:
+    started_with_different_version = False
+---
+code: |
+  import subprocess
+  import re
+  
+  def get_installed_version():
+    '''Returns string to print for the version number.
+       Can be some kind of error message. '''
+    # https://stackoverflow.com/a/13332300
+    packages = subprocess.run(['npm', 'list', '-g', '--prefix', '/var/www/.npm-global', '--depth', '0', '-p', '-l'], check=False, capture_output=True)
+    # What would cause an error here?
+    if result.returncode != 0:
+      log('=== ALKiln === Error getting server ALKiln version:')
+      log(f'Error code: {result.returncode}')
+      log(packages.stderr.decode("utf-8"))
+      server_version = 'Error getting server ALKiln version'
+    else:
+      pattern = re.compile(r'suffolklitlab/alkiln@(\d.*)$')
+      matches = re.search(pattern, packages.stdout.decode())
+      if matches == None:
+        server_version = 'Could not find a version of ALKiln on the server. You need to install a version of ALKiln'
+      else:
+        server_version = matches.group(1)
+        del matches # cannot pickle error otherwise
+    return server_version
+---
+code: |
+  installation_output = background_action('install_alkiln', None, version=version_to_install)
+---
+event: install_alkiln
+code: |
+  import subprocess
+  import os
+  
+  # TODO: How do we detect if someone _else_ on the server didn't properly finish installing ALKiln and that there will be non-cache problems?
+  
+  subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
+  
+  # Must install with npm version, not GitHub branch as
+  # we don't know a simple way to get the npm version from the
+  # branch installation so we can help the user install the
+  # right version or, alternatively, avoid installing anything
+  # unecessary. On GitHub, though, we hope to use the branch
+  # or commit as the source of truth for our version. This
+  # unfortunately means there can't be just one source of truth
+  # for which version of ALKiln is being used.
+  
+  # if statement for idempotency? Run install only once. Needed here?
+  if not did_install:
+    to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
+    install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+    did_install = True
+  
+  if install_output.returncode != 0:
+    result = install_output.stderr.decode('utf-8')
+    log(f'=== ALKiln === Error: installing version {action_argument("version")} failed')
+    log(result)
+    
+    # Should this be a default behavior with any error?
+    if 'ENOTEMPTY' in result:
+      # When tested, returned non-zero exit status 217 was the logged subprocess err
+      
+      log('ALKiln: Trying to clean up the old installation.')
+      # https://stackoverflow.com/a/72022642
+      delete_kiln_output = subprocess.run(['rm', '-r', '/var/www/.npm-global/lib/node_modules/@suffolklitlab'], check=False, capture_output=True)
+      
+      # Do we need an idempotency flag here?
+      log(f'ALKiln: Trying to install version {action_argument("version")} again.')
+      install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+      
+      # Not sure what more we can do at this point if it goes wrong
+      if install_output.returncode != 0:
+        log(f'=== ALKiln === Error: 2nd time installing version {action_argument("version")} failed')
+        log(install_output.stderr.decode('utf-8'))
+        
+  # Always except if is still an error. Will cause failure.
+  install_output.check_returncode()
+  
+  # If no error thrown by now, log output and succeed
+  result = install_output.stdout.decode('utf-8')
+  log('=== ALKiln === Installation succeeded:')
+  log(result)
+
+  background_response(result)
+---
+code: |
+  did_install = False
+---
+code: |
+  install_failed = True
+  flag_failed_installation = True
+---
+code: |
+  install_failed = False
+---
+id: wait for alkiln install
+prevent going back: True
+reload: True
+event: wait_for_install
+question: |
+  One sec, installing ALKiln v${version_to_install}
+subquestion: |
+  **While ALKiln is installing DO NOT:**
+  
+  - Save a python module
+  - Pull or upload a package with a python module
+  - Otherwise cause the server to reload, restart, or stop
+  
+  This should take less than a minute, though if your server or the npm servers are slow, it may take longer.
+  
+  **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }**[BR]
+  (Updates about every 10 seconds depending on your server)
+
+# revoke install
+action buttons:
+  - label: Cancel and try again
+    action: stop_install_early
+    icon: window-close
+    color: danger
+---
+code: |
+  require_restart_install_timer = False
+---
+event: restart_install_timer
+code: |
+  require_restart_install_timer = False
+  install_start = current_datetime()
+---
+code: |
+  install_start = current_datetime()
+---
+####################################
+# Testing
+####################################
+---
+id: test info
+prevent going back: True
+question: |
+  Run ALKiln tests
+subquestion: |
+  % if install_failed:
+  <p class="alert alert-warning">
+  Warning: ALKiln installation failed. You can still run your tests with the previous version you had installed. To see more, check <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log">your worker.log</a>. It might have been a problem with the node package manager (npm) servers. The <a href="https://status.npmjs.org/">npm status page</a> might tell you if npm servers are down. If you want to use a different version of ALKiln, you'll have to try again later.
+  </p>
+  % endif
+
+  % if version_error != '':
+  <p class="alert alert-warning">
+  Warning: Usually you would have seen an option to install a different version of ALKiln. We skipped that screen because there was a problem getting information from the npm servers. You can check the output of the error in <a target="_blank" href="${url_of('root', _external=True)}/logs?file=docassemble.log">your docassemble.log</a>. It might have been a problem with the node package manager (npm) servers. The <a href="https://status.npmjs.org/">npm status page</a> might tell you if npm servers are down. If you want to use a different version of ALKiln, you'll have to try again later.
+  </p>
+  % endif
+  
+  You will run your tests with this version of ALKiln:[BR]
+  ** ${ get_installed_version() }**
+  
+  While tests are running try to avoid:
+  
+  - Editing this project
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Causing the server to reload, restart, or stop
+fields:
+  - note: |
+      The code you want to test should be in a Project on your Playground on this server.
+  - What Project is the code in?: project_name
+    input type: radio
+    choices:
+      code: |
+        [[ proj, proj ] for proj in get_list_of_projects( user_info().id )]
+  - note: |
+      You can choose to run just specific tests using [tags](https://cucumber.io/docs/cucumber/api/?lang=java#tags) in your test file and putting a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions) here.
+  - I want to run all the tests: not_wants_tags
+    datatype: yesno
+  - What tags do you want to use?: tag_expression
+    disable if: not_wants_tags
+    # Doesn't matter if they leave it blank
+    required: False
+continue button label: '<i class="far fa-play-circle"></i> Run tests'
+action buttons:
+  - label: Restart
+    action: do_restart
+    icon: undo
+    color: warning
+---
+event: do_restart
+code: |
+  command('restart')
+---
+code: |
+  from docassemble.webapp.files import SavedFile
+  from docassemble.webapp.backend import directory_for
+  import os
+
+  def get_list_of_projects(user_id):
+    playground = SavedFile(user_id, fix=False, section='playground')
+    return playground.list_of_dirs()
+---
+if:
+  - not_wants_tags
+code: |
+  tag_expression = ''
+---
+code: |
+  test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
+---
+event: run_alkiln
+code: |
+  import subprocess
+  import os
+  
+  # if statement for idempotency - ensure tests are only run once
+  if not has_run_tests:
+    test_output = subprocess.run(
+      ['/var/www/.npm-global/bin/alkiln-run'],
+      check=False,
+      capture_output=True,
+      env=dict(os.environ,
+        SERVER_URL=f'{url_of("root", _external=True)}',
+        _ORIGIN='playground',
+        _PROJECT_NAME=action_argument('project_name'),
+        _USER_ID=f'{user_info().id}',
+        _TAGS=action_argument('tag_expression'),
+        # Don't need the values of these when running in interview
+        REPO_URL="X",
+        BRANCH_NAME="X",
+        DOCASSEMBLE_DEVELOPER_API_KEY="X"
+    ))
+    has_run_tests = True
+  
+  # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/main/docassemble/AssemblyLine/al_document.py#L1275-L1284
+  # https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/data/questions/compile_bootstrap.yml
+  
+  output = '<div class="console_output">\n'
+  output += '<div class="section">\n'
+  output += '<h2 id="report">Console output</h2>\n'
+  output += '<pre>\n<code>\n'
+  output += f'{test_output.stdout.decode("utf-8")}{test_output.stderr.decode("utf-8")}\n'
+  output += '</code>\n</pre>\n'
+  output += '</div>\n'
+  output += '</div>\n'
+  
+  background_response(output)
+---
+code: |
+  has_run_tests = False
+---
+prevent going back: True
+event: waiting_screen
+reload: True
+question: |
+  Hang tight, ALKiln is running the tests.
+subquestion: |
+  While tests are running try to avoid:
+  
+  - Editing this project
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Causing the server to reload, restart, or stop
+  
+  Otherwise, tests might fail and you'll have to rerun them.
+
+  This screen will reload about every 10 seconds until the tests are done (seconds depending on your server speed).
+  
+  **Elapsed time: ${ str(test_time.delta) }**[BR]
+  (Updates about every 10 seconds depending on your server)
+
+# revoke tests
+action buttons:
+  - label: Stop tests early
+    action: stop_tests_early
+    icon: window-close
+    color: danger
+---
+event: stop_tests_early
+code: |
+  stopped_early = True
+  test_run_output.revoke()
+---
+code: |
+  stopped_early = False
+---
+reconsider: True
+code: |
+  # Deliberately explicit about the end time
+  test_time = date_difference( ending=current_datetime(), starting=test_start_time )
+---
+code: |
+  test_start_time = current_datetime()
+---
+code: |
+  folder_name = get_folder_name()
+  files_html = get_files_html(folder_name)
+  if files_html == None:
+    file_problem = True
+  run_get_files_html = True
+---
+code: |
+  if file_problem or stopped_early:
+    no_output = True
+  else:
+    no_output = False
+---
+# Does this absolutely need to be separate? Do we at times
+# want to avoid calling get_files_html()?
+code: |
+  file_problem = False
+---
+code: |
+  import json
+  
+  def get_folder_name():
+    with open('/tmp/runtime_config.json') as config:
+      folder_name = json.load(config)['artifacts_path']
+    return folder_name
+---
+code: |
+  import os
+  import subprocess
+  
+  def get_files_html(folder_name):
+    '''Return html to show files in the artifacts folder.
+       Syntax highlighting.'''
+    
+    folder_exists = os.path.exists(f'/tmp/{folder_name}')
+    if not folder_exists:
+      return None
+    
+    html = ''
+    
+    safe_zip_name = get_zip_name(folder_name)
+    zip_process = subprocess.run(['zip', '-r', f'{safe_zip_name}', f'{folder_name}'], cwd="/tmp", check=False, capture_output=True)
+    if zip_process.returncode != 0:
+      log('=== ALKiln === Error zipping artifacts folder:')
+      log(zip_process.stderr.decode("utf-8"))
+    else:
+      zip_da_file = DAFile()
+      zip_da_file.initialize(filename=f'{safe_zip_name}.zip')
+      zip_da_file.copy_into(f'/tmp/{safe_zip_name}.zip')
+      zip_da_file.commit()
+    
+      # Zip section
+      html += '<div class="section zip">\n'
+      html += f'{ action_button_html(zip_da_file.url_for(), label="Download all test files and folders", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }\n'
+      html += '</div>\n'
+    
+    # collect top-level names and paths.
+    top_dirs = []
+    top_files = []
+    # A bit faster than other methods, though that doesn't matter much here so far. https://stackoverflow.com/a/62478211/14144258
+    with os.scandir(f'/tmp/{folder_name}') as scan:
+      for dir_item in scan:
+        if dir_item.is_file():
+          top_files.append(dir_item)
+        elif dir_item.is_dir():
+          top_dirs.append(dir_item)
+    
+    # ====== "Root" level output ======
+    html += '<div class="section top_level">\n'
+    html += '<h2>Summary files</h2>\n'
+    html += '<div class="output card card-body">\n'
+    
+    # Show files that are for the all the tests combined
+    # This includes error screenshots
+    top_images_html = ''
+    top_other_files_html = ''
+    report_html = ''
+    top_files.sort(key=lambda file: file.name)
+    for file in top_files:
+      file_html = get_file_html(name=file.name, path=file.path)
+      if file.name.endswith('.jpg'):
+        top_images_html += file_html
+      else:
+        if file.name == 'report.txt':
+          report_html = file_html
+        else:
+          top_other_files_html += file_html
+    
+    # At least report and debug log
+    html += f'<ul class="text_files">\n{report_html}\n{top_other_files_html}\n</ul>\n'
+    if top_images_html != '':
+      html += '<hr>\n'
+      html += f'<ul class="images">\n{top_images_html}\n</ul>\n'
+    
+    # End top-level output contents
+    html += '</div>\n'
+    # End top-level output section
+    html += '</div>\n'
+    
+    # ====== Start all Scenarios ======
+    html += '<div class="section scenarios">\n'
+    
+    # Show files in each Scenario
+    top_dirs.sort(key=lambda dir: dir.name)
+    html += '<h2>Scenario files</h2>\n'
+    
+    # For each Scenario
+    for dir in top_dirs:
+      
+      html += '<div class="output card card-body scenario">\n'
+      html += f'<h3>Scenario: {dir.name}</h3>\n'
+      
+      # Get the files in that Scenario
+      for root_path, dir_names, file_names in os.walk(f'{dir.path}'):
+        file_names.sort()
+        
+        # TODO: organize files by type: report, error, screenshots, downloaded. Maybe by timestamp instead of by name?
+        text_files_html = ''
+        images_html = ''
+        templates_html = ''
+        other_files_html = ''
+        
+        for file_name in file_names:
+          abs_path = os.path.abspath(os.path.join(root_path, file_name))
+          file_html = get_file_html(name=file_name, path=abs_path)
+          
+          if file_name.endswith('.txt'):
+            text_files_html += file_html
+          elif file_name.endswith('.jpg'):
+            # TODO: put error screenshots at the top
+            images_html += file_html
+          elif file_name.endswith('.pdf') or file_name.endswith('.docx'):
+            # TODO: need more flexibility for other types of downloaded files
+            templates_html += file_html
+          else:
+            # Not sure what these'll be
+            other_files_html += file_html
+        
+        if len(file_names) == 0:
+          html += '<div class="no_files">No files.</div>'
+        
+        if text_files_html != '':
+          html += f'<ul class="text_files">\n{text_files_html}\n</ul>\n'
+        # Downloaded pdfs and docxs
+        if templates_html != '':
+          html += '<hr>\n'
+          html += f'<ul class="templates">\n{templates_html}\n</ul>\n'
+        if images_html != '':
+          html += '<hr>\n'
+          # Ordered list because timing creates an order that does matter. Moreso once we have story table screenshots
+          html += f'<ol class="images">\n{images_html}\n</ol>\n'
+        if other_files_html != '':
+          html += '<hr>\n'
+          html += f'<ul class="other_files">\n{other_files_html}\n</ul>\n'
+      # End one Scenario
+      html += '</div>\n'
+      
+    # End all Scenarios
+    html += '</div>\n'
+    
+    return html
+---
+code: |
+  def get_file_html(name='', path=''):
+    # Show a DAFile for each file
+    da_file = DAFile()
+    da_file.initialize(filename=f'{name}')
+    da_file.copy_into(f'{path}')
+    da_file.commit()
+    
+    if name.endswith('.txt'):
+      html = f'<li>\n{name} (<a target="_blank" href="{da_file.url_for()}">tap to see raw text <i class="fas fa-external-link"></i></a>)\n</li>\n'
+    else:
+      # Assumes a file that can be shown with a thumbnail image
+      da_file.set_alt_text(f'The thumbnail image for {name}.')
+      html = f'<li class="thumbnail">\n'
+      html += f'<span><span>{name}</span> '
+      html += f'(<a target="_blank" href="{da_file.url_for()}">tap to see file <i class="fas fa-external-link"></i></a>)'
+      html += f'</span>\n'
+      html += f'<div><a target="_blank" href="{da_file.url_for()}">{da_file}</a></div>\n'
+      html += f'</li>\n'
+    
+    return html
+---
+id: remove files
+code: |
+  import os
+  
+  safe_zip_name = get_zip_name(folder_name)
+  try:
+    os.remove(f'/tmp/{safe_zip_name}.zip')
+  except Exception as error:
+    log('=== ALKiln === Error removing ZIP:')
+    log(error)
+  
+  import shutil
+  try:
+    shutil.rmtree(f'/tmp/{folder_name}')
+  except Exception as error:
+    log('=== ALKiln === Error removing FOLDER:')
+    log(error)
+  
+  # https://stackoverflow.com/a/32949415/14144258
+  import glob
+  
+  # Remove leftover puppeteer stuff if it exists (e.g. if the user
+  # stopped the tests early)
+  # https://github.com/puppeteer/puppeteer/issues/6414
+  sub_folders_list = glob.glob('tmp/puppeteer_dev_chrome_profile*')
+  for sub_folder in sub_folders_list:
+    shutil.rmtree(sub_folder)
+  
+  remove_tmp_files = True
+---
+code: |
+  import re
+  
+  def get_zip_name(folder_name):
+    return re.sub("( )+", "_", folder_name)
+---
+prevent going back: True
+event: show_output
+question: |
+  ALKiln output
+subquestion: |
+
+  <div id="alkiln_test_output">
+  
+  % if stopped_early:
+  <p class="alert alert-warning">
+  Warning: You stopped the tests early. Below is the information the tests collected so far.
+  </p>
+  % endif
+  
+  <div class="section">
+  
+  <div class="version">
+  Ran with version <b>${ get_installed_version() }</b>.
+  </div>
+  <div class="elapsed_time">
+  Elapsed time: <b>${ str(date_difference( ending=current_datetime(), starting=test_start_time ).delta) }</b>
+  </div>
+  % if not no_output:
+  <div class="to_console">
+  <a href="#report">Tap to see full console printout below</a>
+  </div>
+  % endif
+  
+  </div>
+  
+  % if file_problem:
+  <p class="alert alert-danger">
+  The installed version of ALKiln did not create any output which means the tests did not run. Your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log"> worker.log</a> or your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=docassemble.log">docassemble.log</a> might have more information.
+  </p>
+  % else:
+  ${ files_html }
+  % endif
+  
+  % if not no_output:
+  ${ test_run_output.get() }
+  % endif
+  
+  </div>
+
+buttons:
+  - Run new tests: new_session
+---

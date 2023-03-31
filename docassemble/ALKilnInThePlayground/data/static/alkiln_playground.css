@@ -1,0 +1,48 @@
+.da-field-container:has(*[disabled]) * {
+  color: var(--bs-light-text);
+}
+
+#alkiln_test_output h2 {
+  font-size: 1.5em
+}
+
+#alkiln_test_output h3 {
+  font-size: 1.2em
+}
+
+#alkiln_test_output .section {
+  margin-bottom: 1em;
+}
+
+#alkiln_test_output .output {
+  background: rgba(var(--bs-primary-rgb), .2);
+  border: 1px solid var(--bs-primary);
+  margin-bottom: 1em;
+}
+
+#alkiln_test_output li {
+}
+
+#alkiln_test_output ol,
+#alkiln_test_output ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Potentially make a 'carousel' of images or something when there are too many. E.g. when we add the ability to take a pic with every story table page. */
+#alkiln_test_output .images {
+}
+
+#alkiln_test_output .thumbnail {
+  margin-bottom: 0.2em;
+}
+
+pre {
+  border: 1px solid var(--bs-dark);
+  background: rgba(0, 0, 0, .15);
+}
+
+.fa-spin {
+  display: block;
+}
