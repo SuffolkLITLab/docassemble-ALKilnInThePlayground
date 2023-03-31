@@ -46,7 +46,7 @@ def find_package_data(where='.', package='', exclude=standard_exclude, exclude_d
 setup(name='docassemble.ALKilnInThePlayground',
       version='1.0.0',
       description=('Run ALKiln automated tests on your server, no GitHub account required. Made in collaboration with the SuffolkLITLab Document Assembly Line project.'),
-      long_description='# docassemble.ALKilnInThePlayground\n\nRun ALKiln automated tests on your server, no GitHub account required. Made in collaboration with the SuffolkLITLab Document Assembly Line project.\n\n## Author\n\nSystem Administrator, admin@admin.com\n\n',
+      long_description='# docassemble.ALKilnInThePlayground\r\n\r\nRun ALKiln automated tests on your server, no GitHub account required. Made in collaboration with the SuffolkLITLab Document Assembly Line project.\r\n\r\nSee guides for writing tests and more about the project at the [ALKiln documentation](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/automated_integrated_testing).\r\n\r\n## Author\r\n\r\nplocket\r\n\r\n',
       long_description_content_type='text/markdown',
       author='plocket',
       author_email='52798256+plocket@users.noreply.github.com',
