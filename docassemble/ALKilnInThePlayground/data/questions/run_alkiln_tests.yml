@@ -643,7 +643,7 @@ code: |
   def get_file_html(name='', path=''):
     # Show a DAFile for each file
     da_file = DAFile()
-    da_file.initialize(filename=f'{name}')
+    da_file.initialize(filename=f'{space_to_underscore(name)}')
     da_file.copy_into(f'{path}')
     da_file.commit()
     
