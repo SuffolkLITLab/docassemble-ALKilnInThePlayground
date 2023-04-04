@@ -449,7 +449,7 @@ subquestion: |
   
   Otherwise, tests might fail and you'll have to rerun them.
 
-  This screen will reload about every 10 seconds until the tests are done (seconds depending on your server speed).
+  This screen will reload about every 10 seconds until the tests are done (depending on your server speed).
   
   **Elapsed time: ${ str(test_time.delta) }**[BR]
   (Updates about every 10 seconds depending on your server)
