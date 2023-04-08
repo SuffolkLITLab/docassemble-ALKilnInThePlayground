@@ -132,7 +132,7 @@ code: |
     version_error = result.stderr.decode("utf-8")
   else:
     versions = json.loads(result.stdout.decode())
-    alkiln_version_list = filter_versions_greater_or_equal(reversed(versions), '4.0.0')
+    alkiln_version_list = filter_versions_greater_or_equal(reversed(versions), '5.0.0')
     version_error = ''
 ---
 id: which task with no alkiln installed
