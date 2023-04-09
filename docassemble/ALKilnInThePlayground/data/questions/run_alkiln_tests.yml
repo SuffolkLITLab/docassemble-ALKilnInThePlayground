@@ -391,7 +391,10 @@ code: |
   tag_expression = ''
 ---
 code: |
-  test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
+  test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name, env_vars=env_vars)
+---
+code: |
+  env_vars = get_config('alkiln') or {}
 ---
 event: run_alkiln
 code: |
@@ -400,6 +403,7 @@ code: |
   
   # if statement for idempotency - ensure tests are only run once
   if not has_run_tests:
+    other_env_vars = action_argument('env_vars')
     test_output = subprocess.run(
       ['/var/www/.npm-global/bin/alkiln-run'],
       check=False,
@@ -413,7 +417,8 @@ code: |
         # Don't need the values of these when running in interview
         REPO_URL="X",
         BRANCH_NAME="X",
-        DOCASSEMBLE_DEVELOPER_API_KEY="X"
+        DOCASSEMBLE_DEVELOPER_API_KEY="X",
+        **other_env_vars
     ))
     has_run_tests = True
   
