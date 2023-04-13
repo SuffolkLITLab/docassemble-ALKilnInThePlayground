@@ -431,15 +431,12 @@ code: |
   import os
   
   os_env = os.environ.copy()
-  log(os_env, 'console')
+  config_vars = get_config('alkiln') or {}
   
   dangerous_config_var_names = [var for var in config_vars if var in os_env]
 ---
 code: |
-  env_vars = config_vars
----
-code: |
-  config_vars = get_config('alkiln') or {}
+  env_vars = get_config('alkiln') or {}
 ---
 event: run_alkiln
 code: |
