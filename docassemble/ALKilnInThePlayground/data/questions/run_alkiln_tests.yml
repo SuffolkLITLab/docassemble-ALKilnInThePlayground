@@ -83,6 +83,7 @@ buttons:
   Log into this server: signin
 ---
 id: dangerous config var warning
+if: len(dangerous_config_var_names) > 0
 event: warn_about_dangerous_config_vars
 question: |
   You must change your `alkiln` config keys
@@ -103,7 +104,7 @@ subquestion: |
   - Change these names to something else in your config. Starting these types of variable names with something unique, like "ALKILN_", might help keep your variable names safe.
   - Update the names in your tests.
   % else:
-  - Change this name to something else in your config. Starting these types of variable names with something unique, like "ALKILN_", might help keep your variable names safe.
+  - Change this name to something else in your config. Starting the variable name with something unique, like "ALKILN_", might help keep your variable name safe.
   - Update the name in your tests.
   % endif
   
@@ -432,12 +433,7 @@ code: |
   os_env = os.environ.copy()
   log(os_env, 'console')
   
-  temp_names = []
-  for var_key in config_vars:
-    if var_key in os_env:
-      temp_names.append(var_key)
-      
-  dangerous_config_var_names = temp_names
+  dangerous_config_var_names = [var for var in config_vars if var in os_env]
 ---
 code: |
   env_vars = config_vars
