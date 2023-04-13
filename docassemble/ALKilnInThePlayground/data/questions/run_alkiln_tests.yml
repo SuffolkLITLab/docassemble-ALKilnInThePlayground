@@ -55,6 +55,9 @@ code: |
             restart_install_timer
           wait_for_install
   
+  if len(dangerous_config_var_names) > 0:
+    warn_about_dangerous_config_vars
+    
   not_wants_tags
   tag_expression
   
@@ -67,7 +70,7 @@ code: |
     waiting_screen
 ---
 ####################################
-# Blocker
+# Blockers
 ####################################
 ---
 event: ask_to_log_in
@@ -78,6 +81,36 @@ subquestion: |
   To run these tests, you need to be logged into the server where you're keeping the package that you will test. You must be logged in as a developer or an admin.
 buttons:
   Log into this server: signin
+---
+id: dangerous config var warning
+event: warn_about_dangerous_config_vars
+question: |
+  You must change your `alkiln` config keys
+subquestion: |
+  In <a target="_blank" href="${url_of('root', _external=True)}/config">your docassemble server config</a>'s `alkiln` keys, you have used ${ 'variable names' if len(dangerous_config_var_names) > 1 else 'a variable name' } that your operating system is already using:
+  
+  % if len(dangerous_config_var_names) > 1:
+  % for name in dangerous_config_var_names:
+  * ${ name }
+  % endfor
+  % else:
+  ${ dangerous_config_var_names[0] }
+  % endif
+  
+  To fix this:
+  
+  % if len(dangerous_config_var_names) >1:
+  - Change these names to something else in your config. Starting these types of variable names with something unique, like "ALKILN_", might help keep your variable names safe.
+  - Update the names in your tests.
+  % else:
+  - Change this name to something else in your config. Starting these types of variable names with something unique, like "ALKILN_", might help keep your variable names safe.
+  - Update the name in your tests.
+  % endif
+  
+  When you have done that, restart.
+  
+buttons:
+  - ":undo: Restart": restart
 ---
 ####################################
 # Installation
@@ -358,10 +391,10 @@ fields:
       code: |
         [[ proj, proj ] for proj in get_list_of_projects( user_info().id )]
   - note: |
-      You can choose to run just specific tests using [tags](https://cucumber.io/docs/cucumber/api/?lang=java#tags) in your test file and putting a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions) here.
+      You can choose to run just specific tests using [tags](https://cucumber.io/docs/cucumber/api/?lang=java#tags) in your test file and putting a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions) below.
   - I want to run all the tests: not_wants_tags
     datatype: yesno
-  - What tags do you want to use?: tag_expression
+  - Your tag expression: tag_expression
     disable if: not_wants_tags
     # Doesn't matter if they leave it blank
     required: False
@@ -394,7 +427,23 @@ code: |
   test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name, env_vars=env_vars)
 ---
 code: |
-  env_vars = get_config('alkiln') or {}
+  import os
+  
+  os_env = os.environ.copy()
+  log(os_env, 'console')
+  
+  temp_names = []
+  for var_key in config_vars:
+    if var_key in os_env:
+      temp_names.append(var_key)
+      
+  dangerous_config_var_names = temp_names
+---
+code: |
+  env_vars = config_vars
+---
+code: |
+  config_vars = get_config('alkiln') or {}
 ---
 event: run_alkiln
 code: |
