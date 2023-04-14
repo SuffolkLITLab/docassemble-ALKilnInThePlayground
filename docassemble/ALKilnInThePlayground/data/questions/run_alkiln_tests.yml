@@ -432,9 +432,9 @@ code: |
   
   os_env = os.environ.copy()
   config_vars = get_config('alkiln') or {}
-  
   dangerous_config_var_names = [var for var in config_vars if var in os_env]
 ---
+if: len(dangerous_config_var_names) == 0
 code: |
   env_vars = get_config('alkiln') or {}
 ---
