@@ -20,6 +20,9 @@ code: |
   if not user_has_privilege(['admin', 'developer']):
     ask_to_log_in
   
+  if len(dangerous_config_var_names) > 0:
+    warn_about_dangerous_config_vars
+  
   if redo_after_stopped_with_invalid_install:
     invalid_install = True
     undefine_install_task = True
@@ -54,7 +57,7 @@ code: |
           if require_restart_install_timer:
             restart_install_timer
           wait_for_install
-  
+    
   not_wants_tags
   tag_expression
   
@@ -67,7 +70,7 @@ code: |
     waiting_screen
 ---
 ####################################
-# Blocker
+# Blockers
 ####################################
 ---
 event: ask_to_log_in
@@ -78,6 +81,37 @@ subquestion: |
   To run these tests, you need to be logged into the server where you're keeping the package that you will test. You must be logged in as a developer or an admin.
 buttons:
   Log into this server: signin
+---
+id: dangerous config var warning
+if: len(dangerous_config_var_names) > 0
+event: warn_about_dangerous_config_vars
+question: |
+  Before you start, you must change your `alkiln` config keys
+subquestion: |
+  In <a target="_blank" href="${url_of('root', _external=True)}/config">your docassemble server config</a>'s `alkiln` keys, you have used ${ 'variable names' if len(dangerous_config_var_names) > 1 else 'a variable name' } that your operating system is already using:
+  
+  % if len(dangerous_config_var_names) > 1:
+  % for name in dangerous_config_var_names:
+  * ${ name }
+  % endfor
+  % else:
+  ${ dangerous_config_var_names[0] }
+  % endif
+  
+  To fix this:
+  
+  % if len(dangerous_config_var_names) >1:
+  - Change these names to something else in your config. Starting these types of variable names with something unique, like "ALKILN_", might help keep your variable names safe.
+  - Update the names in your tests.
+  % else:
+  - Change this name to something else in your config. Starting the variable name with something unique, like "ALKILN_", might help keep your variable name safe.
+  - Update the name in your tests.
+  % endif
+  
+  When you have done that, restart.
+  
+buttons:
+  - ":undo: Restart": restart
 ---
 ####################################
 # Installation
@@ -358,10 +392,10 @@ fields:
       code: |
         [[ proj, proj ] for proj in get_list_of_projects( user_info().id )]
   - note: |
-      You can choose to run just specific tests using [tags](https://cucumber.io/docs/cucumber/api/?lang=java#tags) in your test file and putting a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions) here.
+      You can choose to run just specific tests using [tags](https://cucumber.io/docs/cucumber/api/?lang=java#tags) in your test file and putting a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions) below.
   - I want to run all the tests: not_wants_tags
     datatype: yesno
-  - What tags do you want to use?: tag_expression
+  - Your tag expression: tag_expression
     disable if: not_wants_tags
     # Doesn't matter if they leave it blank
     required: False
@@ -391,7 +425,18 @@ code: |
   tag_expression = ''
 ---
 code: |
-  test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
+  test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name, env_vars=env_vars)
+---
+code: |
+  import os
+  
+  os_env = os.environ.copy()
+  config_vars = get_config('alkiln') or {}
+  dangerous_config_var_names = [var for var in config_vars if var in os_env]
+---
+if: len(dangerous_config_var_names) == 0
+code: |
+  env_vars = get_config('alkiln') or {}
 ---
 event: run_alkiln
 code: |
@@ -400,6 +445,7 @@ code: |
   
   # if statement for idempotency - ensure tests are only run once
   if not has_run_tests:
+    other_env_vars = action_argument('env_vars')
     test_output = subprocess.run(
       ['/var/www/.npm-global/bin/alkiln-run'],
       check=False,
@@ -413,7 +459,8 @@ code: |
         # Don't need the values of these when running in interview
         REPO_URL="X",
         BRANCH_NAME="X",
-        DOCASSEMBLE_DEVELOPER_API_KEY="X"
+        DOCASSEMBLE_DEVELOPER_API_KEY="X",
+        **other_env_vars
     ))
     has_run_tests = True
   
