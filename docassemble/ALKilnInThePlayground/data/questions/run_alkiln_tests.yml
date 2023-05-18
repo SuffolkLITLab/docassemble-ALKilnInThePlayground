@@ -135,7 +135,7 @@ code: |
   import subprocess
   import json
   
-  def filter_versions_greater_or_equal(versions: list[str], minimum: str = "0.0.0") -> list[str]:
+  def filter_versions_greater_or_equal(versions, minimum="0.0.0"):
     '''Given a list of strings of versions, return a new list of
     versions at or above the given minimum version.'''
     filtered = []
