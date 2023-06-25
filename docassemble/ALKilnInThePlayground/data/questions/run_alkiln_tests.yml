@@ -195,6 +195,13 @@ if: |
 question: |
   ALKiln version
 subquestion: |
+
+  <div class="spinner-container d-flex justify-content-center">
+  <div class="spinner-border" role="status">
+    <span class="visually-hidden">Running tests...</span>
+  </div>
+  </div>
+
   The server's current version of ALKiln is:[BR]
   **${ get_installed_version() }**
   
@@ -324,8 +331,8 @@ event: wait_for_install
 question: |
   One sec, installing ALKiln v${version_to_install}
 subquestion: |
-  <div class="d-flex justify-content-center">
-  <div class="spinner-border" style="width: 3rem; height: 3rem;" role="status">
+  <div class="spinner-container d-flex justify-content-center">
+  <div class="spinner-border" role="status">
     <span class="visually-hidden">Installing...</span>
   </div>
   </div>
@@ -493,8 +500,8 @@ reload: True
 question: |
   Hang tight, ALKiln is running the tests.
 subquestion: |
-  <div class="d-flex justify-content-center">
-  <div class="spinner-border" style="width: 3rem; height: 3rem;" role="status">
+  <div class="spinner-container d-flex justify-content-center">
+  <div class="spinner-border" role="status">
     <span class="visually-hidden">Running tests...</span>
   </div>
   </div>
