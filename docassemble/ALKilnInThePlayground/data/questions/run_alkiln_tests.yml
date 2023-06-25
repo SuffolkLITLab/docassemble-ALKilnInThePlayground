@@ -195,13 +195,6 @@ if: |
 question: |
   ALKiln version
 subquestion: |
-
-  <div class="spinner-container d-flex justify-content-center">
-  <div class="spinner-border" role="status">
-    <span class="visually-hidden">Running tests...</span>
-  </div>
-  </div>
-
   The server's current version of ALKiln is:[BR]
   **${ get_installed_version() }**
   
