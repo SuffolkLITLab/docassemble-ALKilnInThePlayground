@@ -451,6 +451,15 @@ code: |
   
   # if statement for idempotency - ensure tests are only run once
   if not has_run_tests:
+  
+    # Ensure that files in the 'sources' folder of all projects are
+    # cached in /tmp for S3 and such server configurations so that
+    # alkiln can get them there. They should be there for 2hrs at least.
+    # It's not possible to just pick one project.
+    # From https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/create_package.py#L14-L17
+    SavedFile(user_info().id, fix=True, section='playgroundsources')
+  
+    # Run the tests
     other_env_vars = action_argument('env_vars')
     test_output = subprocess.run(
       ['/var/www/.npm-global/bin/alkiln-run'],
