@@ -454,7 +454,8 @@ code: |
   # if statement for idempotency - ensure tests are only run once
   if not has_run_tests:
     # Get interview vars that are external to the background action
-    other_env_vars = env_vars
+    # up here to avoid repeating the block lower down.
+    env_vars
   
     # Ensure that files in the 'sources' folder of all projects are
     # cached in /tmp for S3 and such server configurations so that
@@ -478,7 +479,7 @@ code: |
         REPO_URL="X",
         BRANCH_NAME="X",
         DOCASSEMBLE_DEVELOPER_API_KEY="X",
-        **other_env_vars
+        **env_vars
     ))
     has_run_tests = True
   
