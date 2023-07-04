@@ -100,7 +100,7 @@ subquestion: |
   
   To fix this:
   
-  % if len(dangerous_config_var_names) >1:
+  % if len(dangerous_config_var_names) > 1:
   - Change these names to something else in your config. Starting these types of variable names with something unique, like "ALKILN_", might help keep your variable names safe.
   - Update the names in your tests.
   % else:
@@ -431,7 +431,7 @@ code: |
   tag_expression = ''
 ---
 code: |
-  test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name, env_vars=env_vars)
+  test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
 ---
 code: |
   import os
@@ -439,6 +439,8 @@ code: |
   os_env = os.environ.copy()
   config_vars = get_config('alkiln') or {}
   dangerous_config_var_names = [var for var in config_vars if var in os_env]
+  # consider making a list that excludes dangerous vars
+  # to be more permissive.
 ---
 if: len(dangerous_config_var_names) == 0
 code: |
@@ -451,6 +453,8 @@ code: |
   
   # if statement for idempotency - ensure tests are only run once
   if not has_run_tests:
+    # Get interview vars that are external to the background action
+    other_env_vars = env_vars
   
     # Ensure that files in the 'sources' folder of all projects are
     # cached in /tmp for S3 and such server configurations so that
@@ -460,7 +464,6 @@ code: |
     SavedFile(user_info().id, fix=True, section='playgroundsources')
   
     # Run the tests
-    other_env_vars = action_argument('env_vars')
     test_output = subprocess.run(
       ['/var/www/.npm-global/bin/alkiln-run'],
       check=False,
