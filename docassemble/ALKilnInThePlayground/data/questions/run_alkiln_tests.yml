@@ -135,10 +135,31 @@ code: |
   import subprocess
   import json
   
+  def filter_versions_greater_or_equal(versions, minimum="5.0.0"):
+    '''Given a list of strings of versions, return two lists. Both will
+    be at or above the given minimum version. One will be major versions,
+    the other will be pre-release versions.'''
+    filtered = []
+    try:
+      minimum_list = [int(s) for s in minimum.split(".", maxsplit=2)]
+    except Exception as err:
+      raise ValueError(f"expected a version string in the form major.minor.patch, but got {minimum}") from err
+      
+    for version in versions:
+      # Exclude pre-releases
+      if "-" in version:
+        continue
+      maj, minor, patch, = version.split(".", maxsplit=2)
+      version_parts = [int(maj), int(minor), int(patch)]
+      if version_parts >= minimum_list:
+          filtered.append(version)
+    return filtered
+    
   def filter_versions_greater_or_equal(versions, minimum="0.0.0"):
     '''Given a list of strings of versions, return a new list of
     versions at or above the given minimum version.'''
-    filtered = []
+    major_versions = []
+    pre_versions = []
     try:
       minimum = [int(s) for s in minimum.split(".", maxsplit=2)]
     except Exception as err:
@@ -149,12 +170,14 @@ code: |
       # order to make the comparison
       if "-" in patch_and_prelease:
         patch, pre = patch_and_prelease.split("-", maxsplit=1)
+        version_parts = [int(maj), int(minor), int(patch)]
+        if version_parts >= minimum:
+            pre_versions.append(version)
       else:
-        patch = patch_and_prelease
-      version_parts = [int(maj), int(minor), int(patch)]
-      if version_parts >= minimum:
-          filtered.append(version)
-    return filtered
+        version_parts = [int(maj), int(minor), int(patch_and_prelease)]
+        if version_parts >= minimum:
+            major_versions.append(version)
+    return { "major": major_versions, "pre": pre_versions }
   
   # all versions, but not working: https://stackoverflow.com/a/41416032/14144258
   # puzzle of above: @>4.0.0 seems to get all versions @>5.0.0 seems to get none (only have a single pre-release right now). When none are found, we get err 'JSONDecodeError: Expecting value: line 1 column 1 (char 0)'
@@ -163,10 +186,15 @@ code: |
     log('=== ALKiln === Error getting ALKiln versions:')
     log(result.stderr.decode("utf-8"))
     alkiln_version_list = []
+    alkiln_major_versions = []
+    alkiln_prerelease_versions = []
     version_error = result.stderr.decode("utf-8")
   else:
     versions = json.loads(result.stdout.decode())
-    alkiln_version_list = filter_versions_greater_or_equal(reversed(versions), '5.0.0')
+    filtered = filter_versions_greater_or_equal(reversed(versions), '5.0.0')
+    alkiln_major_versions = filtered[ "major" ]
+    alkiln_prerelease_versions = filtered[ "pre" ]
+    alkiln_version_list = []
     version_error = ''
 ---
 id: which task with no alkiln installed
@@ -183,10 +211,22 @@ subquestion: |
   - Pulling or uploading a package with a python module
   - Otherwise causing the server to reload, restart, or stop
 fields:
+  - Install a different verison of ALKiln: wants_install
+    datatype: yesno
   - ALKiln version: version_to_install
+    js show if:
+      val('wants_install') && !val('wants_experimental')
     choices:
       code: |
-        alkiln_version_list
+        alkiln_major_versions
+  - Install an experimental version instead: wants_experimental
+    datatype: yesno
+    show if: wants_install
+  - Experimental ALKiln version: version_to_install
+    show if: wants_experimental
+    choices:
+      code: |
+        alkiln_prerelease_versions
 continue button field: ask_version
 ---
 id: which task with prexisting version
@@ -208,10 +248,19 @@ fields:
   - Install a different verison of ALKiln: wants_install
     datatype: yesno
   - ALKiln version: version_to_install
-    show if: wants_install
+    js show if:
+      val('wants_install') && !val('wants_experimental')
     choices:
       code: |
-        alkiln_version_list
+        alkiln_major_versions
+  - Install an experimental version instead: wants_experimental
+    datatype: yesno
+    show if: wants_install
+  - Experimental ALKiln version: version_to_install
+    show if: wants_experimental
+    choices:
+      code: |
+        alkiln_prerelease_versions
 continue button field: ask_version
 ---
 code: |
