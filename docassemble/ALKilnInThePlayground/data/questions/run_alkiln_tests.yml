@@ -544,9 +544,7 @@ code: |
         _ALKILN_PROJECT_NAME=action_argument('project_name'),
         _USER_ID=f'{user_info().id}',
         _ALKILN_USER_ID=f'{user_info().id}',
-        #_TAGS=action_argument('tag_expression'),
-        #_ALKILN_TAGS=action_argument('tag_expression'),
-        #_ALKILN_SOURCES=sources,
+        _TAGS=action_argument('tag_expression'),
         # Don't need the values of these when running in interview
         REPO_URL="X",
         BRANCH_NAME="X",
