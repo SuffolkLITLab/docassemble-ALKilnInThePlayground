@@ -67,10 +67,10 @@ code: |
     waiting_screen
 ---
 code: |
-  maybe_sources = f'/usr/share/docassemble/files/playgroundsources/{user_info().id}/{project_name}'
   if get_config('s3').get('enable'):
-    maybe_sources = f'/tmp/playgroundsources/{user_info().id}/{project_name}'
-  sources = maybe_sources
+    sources = f'/tmp/playgroundsources/{user_info().id}/{project_name}'
+  else:
+    sources = f'/usr/share/docassemble/files/playgroundsources/{user_info().id}/{project_name}'
 ---
 ####################################
 # Blockers
@@ -524,9 +524,10 @@ code: |
     
     # Make sure not to pass an empty string for tags as that results in
     # a "@" with no value after it in ALKiln.
-    to_run = ['/var/www/.npm-global/bin/alkiln-run', sources_arg]
     if tags != '':
       to_run = ['/var/www/.npm-global/bin/alkiln-run', tags, sources_arg]
+    else:
+      to_run = ['/var/www/.npm-global/bin/alkiln-run', sources_arg]
   
     # Run the tests
     test_output = subprocess.run(
