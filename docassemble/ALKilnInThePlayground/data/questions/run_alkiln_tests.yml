@@ -58,7 +58,6 @@ code: |
   not_wants_tags
   tag_expression
   
-  test_run_pid
   test_run_output
   if stopped_early or test_run_output.ready():
     run_get_files_html
@@ -66,9 +65,6 @@ code: |
     show_output
   else:
     waiting_screen
----
-code: |
-  test_run_pid = None
 ---
 code: |
   end_time = current_datetime()
@@ -145,26 +141,6 @@ code: |
 code: |
   import subprocess
   import json
-  
-  def filter_versions_greater_or_equal(versions, minimum="5.0.0"):
-    '''Given a list of strings of versions, return two lists. Both will
-    be at or above the given minimum version. One will be major versions,
-    the other will be pre-release versions.'''
-    filtered = []
-    try:
-      minimum_list = [int(s) for s in minimum.split(".", maxsplit=2)]
-    except Exception as err:
-      raise ValueError(f"expected a version string in the form major.minor.patch, but got {minimum}") from err
-      
-    for version in versions:
-      # Exclude pre-releases
-      if "-" in version:
-        continue
-      maj, minor, patch, = version.split(".", maxsplit=2)
-      version_parts = [int(maj), int(minor), int(patch)]
-      if version_parts >= minimum_list:
-          filtered.append(version)
-    return filtered
     
   def filter_versions_greater_or_equal(versions, minimum="0.0.0"):
     '''Given a list of strings of versions, return a new list of
@@ -174,7 +150,7 @@ code: |
     try:
       minimum = [int(s) for s in minimum.split(".", maxsplit=2)]
     except Exception as err:
-      raise ValueError(f"expected a version string in the form major.minor.patch, but got {minimum}") from err
+      raise ValueError(f"■■■ ALKiln Error ALKP0001: npm version filter expected a version string in the form major.minor.patch, but got {minimum}") from err
     for version in versions:
       maj, minor, patch_and_prelease, = version.split(".", maxsplit=2)
       # If there is a prerelease attached, get rid of it in 
@@ -194,7 +170,7 @@ code: |
   # puzzle of above: @>4.0.0 seems to get all versions @>5.0.0 seems to get none (only have a single pre-release right now). When none are found, we get err 'JSONDecodeError: Expecting value: line 1 column 1 (char 0)'
   result = subprocess.run(['npm', 'view', "@suffolklitlab/alkiln", 'versions', '--json'], check=False, capture_output=True)
   if result.returncode != 0:
-    log('■■■ ALKiln ■■■ Error getting ALKiln versions:')
+    log('■■■ ALKiln Error ALKP0002: npm install error getting ALKiln versions:')
     log(result.stderr.decode("utf-8"))
     alkiln_version_list = []
     alkiln_major_versions = []
@@ -294,15 +270,15 @@ code: |
     packages = subprocess.run(['npm', 'list', '-g', '--prefix', '/var/www/.npm-global', '--depth', '0', '-p', '-l'], check=False, capture_output=True)
     # What would cause an error here?
     if result.returncode != 0:
-      log('■■■ ALKiln ■■■ Error getting server ALKiln version:')
-      log(f'Error code: {result.returncode}')
+      log('■■■ ALKiln Error ALKP0003: getting the server\'s currently installed ALKiln version:')
+      log(f'Error code: { result.returncode }')
       log(packages.stderr.decode("utf-8"))
       server_version = 'Error getting server ALKiln version'
     else:
       pattern = re.compile(r'suffolklitlab/alkiln@(\d.*)$')
       matches = re.search(pattern, packages.stdout.decode())
       if matches == None:
-        server_version = 'Could not find a version of ALKiln on the server. You need to install a version of ALKiln'
+        server_version = 'Could not find a version of ALKiln on the server. You need to install a version of ALKiln.'
       else:
         server_version = matches.group(1)
         del matches # cannot pickle error otherwise
@@ -337,24 +313,24 @@ code: |
   
   if install_output.returncode != 0:
     result = install_output.stderr.decode('utf-8')
-    log(f'■■■ ALKiln ■■■ Error: installing version {action_argument("version")} failed')
+    log(f'■■■ ALKiln Error ALKP0004: installing ALKiln version {action_argument("version")} failed')
     log(result)
     
     # Should this be a default behavior with any error?
     if 'ENOTEMPTY' in result:
       # When tested, returned non-zero exit status 217 was the logged subprocess err
       
-      log('ALKiln: Trying to clean up the old installation.')
+      log('□□□ ALKiln: Trying to clean up the old ALKiln installation.')
       # https://stackoverflow.com/a/72022642
       delete_kiln_output = subprocess.run(['rm', '-r', '/var/www/.npm-global/lib/node_modules/@suffolklitlab'], check=False, capture_output=True)
       
       # Do we need an idempotency flag here?
-      log(f'ALKiln: Trying to install version {action_argument("version")} again.')
+      log(f'□□□ ALKiln: Trying to install version {action_argument("version")} again.')
       install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
       
       # Not sure what more we can do at this point if it goes wrong
       if install_output.returncode != 0:
-        log(f'■■■ ALKiln ■■■ Error: 2nd time installing version {action_argument("version")} failed')
+        log(f'■■■ ALKiln Error ALKP0005: 2nd time installing version {action_argument("version")} failed')
         log(install_output.stderr.decode('utf-8'))
         
   # Always except if is still an error. Will cause failure.
@@ -362,7 +338,7 @@ code: |
   
   # If no error thrown by now, log output and succeed
   result = install_output.stdout.decode('utf-8')
-  log('□□□ ALKiln □□□ Installation succeeded:')
+  log('□□□ ALKiln Installation succeeded:')
   log(result)
 
   background_response(result)
@@ -512,15 +488,19 @@ code: |
   import signal
   import os
   
+  # When the process timesout, chrome is closing, but node isn't for about another 50 seconds. That's shorter than the test, which is good, but I'm not sure why it waits so long.
+  
+  # There must be a better way than encoding empty strings
+  test_output = (''.encode('utf-8'), ''.encode('utf-8'))
+  timeout_output = ''
+  
   # if statement for idempotency - ensure tests are only run once
   if not has_run_tests:
     # Get interview vars that are external to the background action
     # up here to avoid repeating the block lower down.
     env_vars
     sources
-    # Not sure what would work with `.decode()
-    # Hopefully this never comes up
-    test_output = ('', '')
+    returncode = None
   
     # Ensure that files in the 'sources' folder of all projects are
     # cached in /tmp for S3 and such server configurations so that
@@ -531,8 +511,7 @@ code: |
   
     tags = action_argument('tag_expression')
     sources_arg = f'--sources={sources}'
-    log_sources = f'ALKiln sources path: {sources}'
-    log(log_sources)
+    log(f'□□□ ALKiln sources path: {sources}')
     
     # Make sure not to pass an empty string for tags as that results in
     # a "@" with no value after it in ALKiln.
@@ -540,32 +519,10 @@ code: |
       to_run = ['/var/www/.npm-global/bin/alkiln-run', tags, sources_arg]
     else:
       to_run = ['/var/www/.npm-global/bin/alkiln-run', sources_arg]
-  
-    # Run the tests
-    
-    #test_output = subprocess.run(
-    #  #' '.join(to_run),
-    #  to_run,
-    #  check=False,
-    #  capture_output=True,
-    #  env=dict(os.environ,
-    #    SERVER_URL=f'{url_of("root", _external=True)}',
-    #    _ORIGIN='playground',
-    #    _ALKILN_ORIGIN='playground',
-    #    _PROJECT_NAME=action_argument('project_name'),
-    #    _ALKILN_PROJECT_NAME=action_argument('project_name'),
-    #    _USER_ID=f'{user_info().id}',
-    #    _ALKILN_USER_ID=f'{user_info().id}',
-    #    _TAGS=action_argument('tag_expression'),
-    #    # Don't need the values of these when running in interview
-    #    REPO_URL="X",
-    #    BRANCH_NAME="X",
-    #    DOCASSEMBLE_DEVELOPER_API_KEY="X",
-    #    **env_vars
-    #))
     
     # Prepare the environment variables
-    custom_env = dict(os.environ,
+    custom_env = dict(
+      os.environ,
       SERVER_URL=f'{url_of("root", _external=True)}',
       _ORIGIN='playground',
       _ALKILN_ORIGIN='playground',
@@ -581,53 +538,76 @@ code: |
       **env_vars
     )
     
-    # Run the command using Popen with a new session and environment variables
-    process = subprocess.Popen(
-      to_run,
-      start_new_session=True,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.PIPE,
-      env=custom_env
-    )
+    # Run the tests
+    try:
+      # Should we try/catch this function call?
+      process = subprocess.Popen(
+        to_run,
+        start_new_session=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=custom_env
+      )
 
-    # Get the process id of the subprocess
-    test_run_pid = process.pid
-    
-    log( f'■■■ Running tests with test_run_pid: { test_run_pid }' )
+      # Ensure tests don't re-run, even (especially) if they error
+      has_run_tests = True
 
-    # To capture the output, you can read from `stdout` and `stderr`
-    # (stdout_data, stderr_data)
-    test_output = process.communicate()
-    
-    # We get here even when the process failed
-    log( f'■■■ Process completed with { process.returncode }' )
-    # Check if the process completed successfully
-    if process.returncode !=  0:
-      os.killpg(os.getpgid( test_run_pid ), signal.SIGTERM)
-      #raise subprocess.CalledProcessError(process.returncode, to_run, output=test_output[0], stderr=test_output[1])
+      # Get the process id of the subprocess
+      test_run_pid = process.pid
+      log( f'□□□ Running ALKiln tests with process ID { test_run_pid }' )
 
+      start_process_wait_time = current_datetime()
+      # `.communicate()` `timeout` is in seconds
+      # 60 seconds * 60 minutes * 12 hours
+      max_run_time = env_vars.get(
+        'ALKILN_MAX_SECONDS_FOR_TEST_RUN',
+        60 * 60 * 12
+      )
+      # Get output tuple: `(stdout_data, stderr_data)`
+      # As a last resort, the processes will timeout
+      test_output = process.communicate( timeout=max_run_time )
+      returncode = process.returncode
+      
+    except Exception as error:
+      # We get here even when the sub-processes fail
+      log( f'□□□ ALKiln test subprocess completed with { returncode }' )
+      # If it's within 10 seconds of the max time, assume it's an
+      # error for taking too long. Log the max time error.
+      if date_difference( starting=start_process_wait_time ).seconds > (max_run_time - 10):
+        timeout_output = f'■■■ ALKiln Error ALKP0006: the tests run with the pid { test_run_pid } reached the maximum time allowed ({ max_run_time/24 } hours). You can change the maximum time by adding the ALKILN_MAX_SECONDS_FOR_TEST_RUN value to your config\'s `alkiln` key and giving it a different value.'
+        log(timeout_output)
     
-    has_run_tests = True
+      # Check if the process completed successfully
+      if returncode != 0:
+        # Reraise the error
+        raise
+    
+    finally:
+      # Always make sure subprocess and its children are terminated
+      try:
+        os.killpg(os.getpgid( test_run_pid ), signal.SIGTERM)
+        # When `.communicate` runs out of time, it doesn't complete
+        # the process, so the process still has to finish (by
+        # dying, in this case). Make sure the process is fully
+        # terminated. Low level interface.
+        process.wait()
+      except Exception as error:
+        # The process is already terminated
+        # Are there other reasons this might error?
+        pass
+        
+      # Always create output of some kind
   
-  # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/main/docassemble/AssemblyLine/al_document.py#L1275-L1284
-  # https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/data/questions/compile_bootstrap.yml
-  stdout = test_output[0].decode("utf-8")
-  stderr = test_output[1].decode("utf-8")
-  
-  output = '<div class="console_output">\n'
-  output += '<div class="section">\n'
-  output += '<h2 id="report">Console output</h2>\n'
-  output += '<pre>\n<code>\n'
-  # I believe only one of these will exist at a time
-  output += f'{stdout}{stderr}\n'
-  output += '</code>\n</pre>\n'
-  output += '</div>\n'
-  output += '</div>\n'
-  
-  log_output = f'ALKiln test run output:\n{stdout}{stderr}'
-  log(log_output)
-  
-  background_response(output)
+      # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/main/docassemble/AssemblyLine/al_document.py#L1275-L1284
+      # https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/data/questions/compile_bootstrap.yml
+      stdout = test_output[0].decode('utf-8')
+      stderr = test_output[1].decode('utf-8')
+
+      # I believe only one of the list items will exist at a time
+      output_main = '\n'.join([ f'node process return code: { returncode }', timeout_output, stdout, stderr ])
+      log(f'□□□ ALKiln test run output:\n{ output_main }' )
+      
+      background_response( output_main )
 ---
 code: |
   has_run_tests = False
@@ -667,18 +647,8 @@ action buttons:
 ---
 event: stop_tests_early
 code: |
-  import os
-  import signal
-  
-  #log( f'■■■ Stopped tests early. Revoking test_run_pid: { test_run_pid }' )
-  
   stopped_early = True
-  
   test_run_output.revoke()
-  
-  ## Send the SIGTERM signal to the process group because
-  ## docassemble's celery is unable do that itself
-  #os.killpg(os.getpgid( test_run_pid ), signal.SIGTERM)
 ---
 code: |
   stopped_early = False
@@ -734,7 +704,7 @@ code: |
     safe_zip_name = get_zip_name(folder_name)
     zip_process = subprocess.run(['zip', '-r', f'{safe_zip_name}', f'{folder_name}'], cwd="/tmp", check=False, capture_output=True)
     if zip_process.returncode != 0:
-      log('■■■ ALKiln ■■■ Error zipping artifacts folder:')
+      log('■■■ ALKiln Error ALKP0007: error zipping artifacts folder:')
       log(zip_process.stderr.decode("utf-8"))
     else:
       zip_da_file = DAFile()
@@ -847,6 +817,8 @@ code: |
           html += f'<ul class="other_files">\n{other_files_html}\n</ul>\n'
       # End one Scenario
       html += '</div>\n'
+    else:
+      html += '<div>There are no files for these tests.</div>'
       
     # End all Scenarios
     html += '</div>\n'
@@ -883,14 +855,14 @@ code: |
   try:
     os.remove(f'/tmp/{safe_zip_name}.zip')
   except Exception as error:
-    log('■■■ ALKiln ■■■ Error removing ZIP:')
+    log('■■■ ALKiln Error ALKP0008: error removing ZIP:')
     log(error)
   
   import shutil
   try:
     shutil.rmtree(f'/tmp/{folder_name}')
   except Exception as error:
-    log('■■■ ALKiln ■■■ Error removing FOLDER:')
+    log('■■■ ALKiln Error ALKP0009: error removing FOLDER:')
     log(error)
   
   # https://stackoverflow.com/a/32949415/14144258
@@ -926,13 +898,14 @@ subquestion: |
   % endif
   
   <div class="section">
-  
   <div class="version">
   Ran with version <b>${ get_installed_version() }</b>.
   </div>
   <div class="elapsed_time">
+  
   Elapsed time: <b>${ str(date_difference( ending=end_time, starting=test_start_time ).delta) }</b>
   </div>
+  
   % if not no_output:
   <div class="to_console">
   <a href="#report">Tap to see full console printout below</a>
@@ -945,19 +918,33 @@ subquestion: |
   <p class="alert alert-danger">
   The installed version of ALKiln did not create any output which means the tests did not run. Your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log"> worker.log</a> or your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=docassemble.log">docassemble.log</a> might have more information.
   </p>
-  
-  ${ test_run_output.get() }
-  
+  ${ test_output_template }
   % else:
   ${ files_html }
   % endif
   
   % if not no_output:
-  ${ test_run_output.get() }
+  ${ test_output_template }
   % endif
-  
   </div>
 
 buttons:
   - Run new tests: new_session
+---
+template: test_output_template
+content: |
+  <div class="console_output">
+  <div class="section">
+  <h2 id="report">Console output</h2>
+  <pre><code>
+  % if no_output or test_run_output.get() is None or test_run_output.get() == 'None':
+  No console output
+  
+  Your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log">worker.log</a> might have more information.
+  % else:
+  ${ test_run_output.get() }
+  % endif
+  </code></pre>
+  </div>
+  </div>
 ---
