@@ -9,6 +9,9 @@ metadata:
   under: |
     See guides for writing tests in the [ALKiln documentation](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/automated_integrated_testing).
 ---
+comment: |
+  - Stop tests early: console output should show that tests were stopped early
+---
 features:
   css: alkiln_playground.css
 ---
@@ -68,7 +71,6 @@ code: |
 ---
 code: |
   end_time = current_datetime()
-  log(f'end_time: {end_time}', 'console')
 ---
 code: |
   if get_config('s3').get('enable'):
@@ -490,10 +492,6 @@ code: |
   
   # When the process timesout, chrome is closing, but node isn't for about another 50 seconds. That's shorter than the test, which is good, but I'm not sure why it waits so long.
   
-  # There must be a better way than encoding empty strings
-  test_output = (''.encode('utf-8'), ''.encode('utf-8'))
-  timeout_output = ''
-  
   # if statement for idempotency - ensure tests are only run once
   if not has_run_tests:
     # Get interview vars that are external to the background action
@@ -559,23 +557,30 @@ code: |
       start_process_wait_time = current_datetime()
       # `.communicate()` `timeout` is in seconds
       # 60 seconds * 60 minutes * 12 hours
+      timeout_env_var_name = 'ALKILN_MAX_SECONDS_FOR_PLAYGROUND_TEST_RUN'
       max_run_time = env_vars.get(
-        'ALKILN_MAX_SECONDS_FOR_TEST_RUN',
+        timeout_env_var_name,
         60 * 60 * 12
       )
-      # Get output tuple: `(stdout_data, stderr_data)`
-      # As a last resort, the processes will timeout
-      test_output = process.communicate( timeout=max_run_time )
-      returncode = process.returncode
+      
+      try:
+        # Get output tuple: `(stdout_data, stderr_data)`
+        # As a last resort, the processes will timeout
+        test_output = process.communicate( timeout=max_run_time )
+        returncode = process.returncode
+      except subprocess.TimeoutExpired:
+        timeout_output = f'■■■ ALKiln Error ALKP0006: the tests run with the pid { test_run_pid } ran for over { date_difference( starting=start_process_wait_time, ending=current_datetime() ).hours } hours. The maximum time allowed is { max_run_time/60/60 } hours. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` key and giving it a different value.'
+        log(timeout_output)
+      except Exception as error:
+        log('■■■ ALKiln Error ALKP0010: Error while running tests. See below.')
+        log(error)
       
     except Exception as error:
       # We get here even when the sub-processes fail
       log( f'□□□ ALKiln test subprocess completed with { returncode }' )
       # If it's within 10 seconds of the max time, assume it's an
       # error for taking too long. Log the max time error.
-      if date_difference( starting=start_process_wait_time ).seconds > (max_run_time - 10):
-        timeout_output = f'■■■ ALKiln Error ALKP0006: the tests run with the pid { test_run_pid } reached the maximum time allowed ({ max_run_time/24 } hours). You can change the maximum time by adding the ALKILN_MAX_SECONDS_FOR_TEST_RUN value to your config\'s `alkiln` key and giving it a different value.'
-        log(timeout_output)
+      
     
       # Check if the process completed successfully
       if returncode != 0:
@@ -584,6 +589,9 @@ code: |
     
     finally:
       # Always make sure subprocess and its children are terminated
+      # Always create output of some kind
+      
+      # Terminate:
       try:
         os.killpg(os.getpgid( test_run_pid ), signal.SIGTERM)
         # When `.communicate` runs out of time, it doesn't complete
@@ -591,20 +599,23 @@ code: |
         # dying, in this case). Make sure the process is fully
         # terminated. Low level interface.
         process.wait()
-      except Exception as error:
+      except ProcessLookupError as error:
         # The process is already terminated
-        # Are there other reasons this might error?
         pass
+      except Exception as error:
+        log('■■■ ALKiln Error ALKP0011: Error while stopping tests. See below.')
+        log(error)
         
-      # Always create output of some kind
+      # Output:
   
       # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/main/docassemble/AssemblyLine/al_document.py#L1275-L1284
       # https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/data/questions/compile_bootstrap.yml
-      stdout = test_output[0].decode('utf-8')
-      stderr = test_output[1].decode('utf-8')
+      if defined('test_output'):
+        stdout = test_output[0].decode('utf-8')
+        stderr = test_output[1].decode('utf-8')
 
       # I believe only one of the list items will exist at a time
-      output_main = '\n'.join([ f'node process return code: { returncode }', timeout_output, stdout, stderr ])
+      output_main = '\n'.join( text for text in [ f'node process return code: { showifdef("returncode", "None") }', showifdef('timeout_output', ''), showifdef('stdout', ''), showifdef('stderr', '') ] if text )
       log(f'□□□ ALKiln test run output:\n{ output_main }' )
       
       background_response( output_main )
@@ -899,18 +910,16 @@ subquestion: |
   
   <div class="section">
   <div class="version">
-  Ran with version <b>${ get_installed_version() }</b>.
+  Ran with ALKiln version <b>${ get_installed_version() }</b>[BR]
+  Ran with tag expression "${ tag_expression }"
   </div>
   <div class="elapsed_time">
-  
   Elapsed time: <b>${ str(date_difference( ending=end_time, starting=test_start_time ).delta) }</b>
   </div>
   
-  % if not no_output:
   <div class="to_console">
   <a href="#report">Tap to see full console printout below</a>
   </div>
-  % endif
   
   </div>
   
@@ -921,9 +930,7 @@ subquestion: |
   ${ test_output_template }
   % else:
   ${ files_html }
-  % endif
   
-  % if not no_output:
   ${ test_output_template }
   % endif
   </div>
