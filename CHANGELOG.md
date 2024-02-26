@@ -47,6 +47,16 @@ Format:
 
 ## [1.3.1] - 2024-02-25
 
+### Added
+
+- A maximum time for one test run. The default is 12 hours.
+- Only minimally tested - a new config `alkiln` variable to customize the maximum time for one test run. Example:
+
+```yml
+alkiln:
+  ALKILN_MAX_SECONDS_FOR_PLAYGROUND_TEST_RUN: 600
+```
+
 ### Changed
 
 - ALKiln errors now have codes that authors can give us to pinpoint the specific error
