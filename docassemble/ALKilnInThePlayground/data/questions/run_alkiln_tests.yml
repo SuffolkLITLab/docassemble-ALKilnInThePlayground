@@ -74,9 +74,9 @@ code: |
 ---
 code: |
   if get_config('s3').get('enable'):
-    sources = f'/tmp/playgroundsources/{user_info().id}/{project_name}'
+    sources = f'/tmp/playgroundsources/{selected_user_id}/{project_name}'
   else:
-    sources = f'/usr/share/docassemble/files/playgroundsources/{user_info().id}/{project_name}'
+    sources = f'/usr/share/docassemble/files/playgroundsources/{selected_user_id}/{project_name}'
 ---
 ####################################
 # Blockers
@@ -428,13 +428,20 @@ subquestion: |
   - Pulling or uploading a package with a python module
   - Causing the server to reload, restart, or stop
 fields:
+  - User: selected_user_id
+    datatype: integer
+    input type: combobox
+    code: users_and_ids
+    exclude:
+      - "2"
+    default: ${ user_info().id }
   - note: |
       The code you want to test should be in a Project on your Playground on this server.
   - What Project is the code in?: project_name
-    input type: radio
+    input type: dropdown
     choices:
       code: |
-        [[ proj, proj ] for proj in get_list_of_projects( user_info().id )]
+        [proj for proj in get_list_of_projects( showifdef("selected_user_id", prior=True ))]
   - note: |
       You can choose to run just specific tests using [tags](https://cucumber.io/docs/cucumber/api/?lang=java#tags) in your test file and putting a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions) below.
   - I want to run all the tests: not_wants_tags
@@ -449,6 +456,24 @@ action buttons:
     action: do_restart
     icon: undo
     color: warning
+check in: update_selected_user_id
+---
+event: update_selected_user_id
+code: |
+  if action_argument("_changed") == "selected_user_id":
+    background_response({
+      "project_name": {
+        "choices": (
+          [proj for proj in get_list_of_projects( action_argument("selected_user_id") )]
+          or
+          ['No projects found', 'No projects found']
+        )
+      }
+    }, "fields")
+  background_response()
+---
+code: |
+  selected_user_id = user_info().id
 ---
 event: do_restart
 code: |
@@ -460,8 +485,11 @@ code: |
   import os
 
   def get_list_of_projects(user_id):
-    playground = SavedFile(user_id, fix=False, section='playground')
-    return playground.list_of_dirs()
+    try:
+      playground = SavedFile(user_id, fix=False, section='playground')
+      return playground.list_of_dirs()
+    except:
+      return []
 ---
 if:
   - not_wants_tags
@@ -505,7 +533,7 @@ code: |
     # alkiln can get them there. They should be there for 2hrs at least.
     # It's not possible to just pick one project.
     # From https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/create_package.py#L14-L17
-    SavedFile(user_info().id, fix=True, section='playgroundsources')
+    SavedFile(selected_user_id, fix=True, section='playgroundsources')
   
     tags = action_argument('tag_expression')
     sources_arg = f'--sources={sources}'
@@ -526,8 +554,8 @@ code: |
       _ALKILN_ORIGIN='playground',
       _PROJECT_NAME=action_argument('project_name'),
       _ALKILN_PROJECT_NAME=action_argument('project_name'),
-      _USER_ID=f'{user_info().id}',
-      _ALKILN_USER_ID=f'{user_info().id}',
+      _USER_ID=f'{selected_user_id}',
+      _ALKILN_USER_ID=f'{selected_user_id}',
       _TAGS=action_argument('tag_expression'),
       # Only need these in GitHub
       REPO_URL="X",
@@ -955,3 +983,10 @@ content: |
   </div>
   </div>
 ---
+code: |
+  from docassemble.webapp.users.models import UserModel
+
+  the_users = UserModel.query.with_entities(UserModel.id, UserModel.email).all()
+
+  users_and_ids = [{user[0]: user[1]} for user in the_users]
+  del the_users
