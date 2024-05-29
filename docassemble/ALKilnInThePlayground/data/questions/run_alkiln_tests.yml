@@ -441,7 +441,7 @@ fields:
     input type: dropdown
     choices:
       code: |
-        [proj for proj in get_list_of_projects( showifdef("selected_user_id", prior=True ))]
+        [proj for proj in get_list_of_projects( showifdef("selected_user_id", prior=True, alternative=user_info().id ))] or ["N/A"]
   - note: |
       You can choose to run just specific tests using [tags](https://cucumber.io/docs/cucumber/api/?lang=java#tags) in your test file and putting a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions) below.
   - I want to run all the tests: not_wants_tags
@@ -466,7 +466,7 @@ code: |
         "choices": (
           [proj for proj in get_list_of_projects( action_argument("selected_user_id") )]
           or
-          ['No projects found', 'No projects found']
+          ['No projects found']
         )
       }
     }, "fields")
