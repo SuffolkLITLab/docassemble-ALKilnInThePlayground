@@ -955,3 +955,55 @@ content: |
   </div>
   </div>
 ---
+---
+id: very strict name sanitization
+code: |
+  def very_safe_name( uncertain_str ):
+    return re.sub(r"[^A-z0-9_]", "_", uncertain_str)
+---
+---
+id: check command existence
+need:
+  - _debug
+code: |
+  import os
+  def has_command( bin_name ):
+    cmd_exists = os.path.isfile(f"/var/www/.npm-global/bin/{ bin_name }")
+    _debug(f"{ bin_name } exists? { cmd_exists }")
+    return cmd_exists
+---
+---
+code: |
+  import time
+  def timey():
+    return time.time()
+---
+---
+code: |
+  def _log( to_log, where="log" ):
+    log( to_log, where )
+    if where != "console":
+      log( to_log, "console" )
+    return ''
+---
+need:
+  - debugging
+code: |
+  def _debug( to_log, where="log" ):
+    if debugging:
+      try:
+        log( repr(to_log), where )
+        if where != "console":
+          log( repr(to_log), "console" )
+      except:
+        try:
+          log( to_log, where )
+          if where != "console":
+            log( to_log, "console" )
+        except:
+          pass
+    return ''
+---
+code: |
+  debugging = alkiln_config_vars.get('alkip_debug', False)
+---
