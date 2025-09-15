@@ -16,6 +16,10 @@ features:
   css: alkiln_playground.css
 ---
 mandatory: True
+id: interview order
+need:
+  - _log
+  - _debug
 code: |
   if not user_has_privilege(['admin', 'developer']):
     ask_to_log_in
@@ -188,7 +192,10 @@ code: |
 ---
 id: which task with no alkiln installed
 if: |
-  'Could not find' in get_installed_version() or invalid_install
+  'Could not get' in get_installed_version() or invalid_install
+need:
+  - get_installed_version
+  - invalid_install
 question: |
   Install ALKiln
 subquestion: |
@@ -217,10 +224,16 @@ fields:
       code: |
         alkiln_prerelease_versions
 continue button field: ask_version
+validation code: |
+  if not wants_install:
+    validation_error('You must install a version of ALKiln')
 ---
 id: which task with prexisting version
 if: |
-  not 'Could not find' in get_installed_version() and not invalid_install
+  not 'Could not get' in get_installed_version() and not invalid_install
+need:
+  - invalid_install
+  - get_installed_version
 question: |
   ALKiln version
 subquestion: |
@@ -261,26 +274,33 @@ code: |
   else:
     started_with_different_version = False
 ---
+# new TODO: Delete old code
+# new TODO: Discuss better way to indicate failure (as opposed to message strings)
+# new TODO: Should `if matches == None:` be an error path?
+# new TODO: Improve error logs
+need:
+  - _log
 code: |
   import subprocess
   import re
   
   def get_installed_version():
     '''Returns string to print for the version number.
-       Can be some kind of error message. '''
+       Can be some kind of error message with 'Could not get'.'''
+
     # https://stackoverflow.com/a/13332300
     packages = subprocess.run(['npm', 'list', '-g', '--prefix', '/var/www/.npm-global', '--depth', '0', '-p', '-l'], check=False, capture_output=True)
     # What would cause an error here?
-    if result.returncode != 0:
-      log('■■■ ALKiln Error ALKP0003: getting the server\'s currently installed ALKiln version:')
-      log(f'Error code: { result.returncode }')
-      log(packages.stderr.decode("utf-8"))
-      server_version = 'Error getting server ALKiln version'
+    if packages.returncode != 0:
+      _log('🤕 ALKiln Error ALKP0003: getting this server\'s currently installed ALKiln version:')
+      _log(f'Error code: { packages.returncode }')
+      _log( packages.stderr.decode("utf-8") )
+      server_version = "Could not get this server's version of ALKiln. ALKilnInThePlayground got an error instead."
     else:
       pattern = re.compile(r'suffolklitlab/alkiln@(\d.*)$')
       matches = re.search(pattern, packages.stdout.decode())
       if matches == None:
-        server_version = 'Could not find a version of ALKiln on the server. You need to install a version of ALKiln.'
+        server_version = "This server's version of ALKiln seems to be missing. Install a version of ALKiln to continue."
       else:
         server_version = matches.group(1)
         del matches # cannot pickle error otherwise
@@ -386,6 +406,7 @@ action buttons:
     icon: window-close
     color: danger
 ---
+# TODO: Explore these install_timer blocks
 code: |
   require_restart_install_timer = False
 ---
@@ -471,33 +492,66 @@ code: |
 code: |
   test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
 ---
+# new TODO: Should this be in the helpers section?
+reconsider: True
+id: alkiln-related config vars
+code: |
+  alkiln_config_vars = get_config('alkiln') or {}
+---
+# new TODO: Clarify the comment below—Discuss: consider creating a list that excludes the current dangerous vars. That more permissive list would allow tests to continue even though the tests wouldn't have all the config vars the author wants. Questionable.
+# new TODO: Replace `config_vars` with `alkiln_config_vars` everywhere
+need:
+  - alkiln_config_vars
 code: |
   import os
   
   os_env = os.environ.copy()
-  config_vars = get_config('alkiln') or {}
-  dangerous_config_var_names = [var for var in config_vars if var in os_env]
+  dangerous_config_var_names = [var for var in alkiln_config_vars if var in os_env]
   # consider making a list that excludes dangerous vars
   # to be more permissive.
 ---
+# new TODO: Use alkiln_config_vars in here instead
+# new TODO: Rename env_vars.
+# new TODO: Explore alkiln_config_vars vs. env_vars vs. cusotm_env_vars vs. dangerous_conf...
 if: len(dangerous_config_var_names) == 0
 code: |
-  env_vars = get_config('alkiln') or {}
+  temp_env_vars = get_config('alkiln') or {}
+  temp_env_STRING_VALUES = {key: str(val) for key, val in temp_env_vars.items()}
+  env_vars = temp_env_STRING_VALUES
 ---
+id: set custom env vars
+reconsider: True
+code: |
+  import os
+
+  custom_env = dict(
+    os.environ,
+    SERVER_URL=f'{url_of("root", _external=True)}',  # Discuss: Remove this req?
+    _ORIGIN='playground', _ALKILN_ORIGIN='playground',
+    _PROJECT_NAME=project_name, _ALKILN_PROJECT_NAME=project_name,
+    _USER_ID=f'{user_info().id}', _ALKILN_USER_ID=f'{user_info().id}',
+    _TAGS=tag_expression,
+    **env_vars
+  )
+---
+# new TODO: Use external custom_env_vars here
+need:
+  - env_vars
+  - sources
+  - has_started_tests
+id: run alkiln
 event: run_alkiln
 code: |
   import subprocess
   import signal
   import os
+
+  cmd_exists = has_command("alkiln-run")
   
   # When the process timesout, chrome is closing, but node isn't for about another 50 seconds. That's shorter than the test, which is good, but I'm not sure why it waits so long.
-  
+
   # if statement for idempotency - ensure tests are only run once
-  if not has_run_tests:
-    # Get interview vars that are external to the background action
-    # up here to avoid repeating the block lower down.
-    env_vars
-    sources
+  if not has_started_tests:
     returncode = None
   
     # Ensure that files in the 'sources' folder of all projects are
@@ -506,11 +560,12 @@ code: |
     # It's not possible to just pick one project.
     # From https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/create_package.py#L14-L17
     SavedFile(user_info().id, fix=True, section='playgroundsources')
+
+    sources_arg = f'--sources={ sources }'
+    # log(f'□□□ ALKiP sources path: {sources}')
   
     tags = action_argument('tag_expression')
-    sources_arg = f'--sources={sources}'
-    log(f'□□□ ALKiln sources path: {sources}')
-    
+
     # Make sure not to pass an empty string for tags as that results in
     # a "@" with no value after it in ALKiln.
     if tags != '':
@@ -536,19 +591,25 @@ code: |
       **env_vars
     )
     
+    # Ensure tests don't re-run, even (especially) if they error
+    has_started_tests = True
+    
     # Run the tests
     try:
+  
+      # cwd = os.getcwd()  # "/tmp"
+  
       # Should we try/catch this function call?
       process = subprocess.Popen(
         to_run,
         start_new_session=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env=custom_env
+        env=custom_env,
+        # Currently "/tmp" is the value da already gives for cwd (in background
+        # actions only as far as we can tell), but it may change ¯\_(ツ)_/¯
+        cwd="/tmp"
       )
-
-      # Ensure tests don't re-run, even (especially) if they error
-      has_run_tests = True
 
       # Get the process id of the subprocess
       test_run_pid = process.pid
@@ -572,18 +633,22 @@ code: |
         timeout_output = f'■■■ ALKiln Error ALKP0006: the tests run with the pid { test_run_pid } ran for over { date_difference( starting=start_process_wait_time, ending=current_datetime() ).hours } hours. The maximum time allowed is { max_run_time/60/60 } hours. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` key and giving it a different value.'
         log(timeout_output)
       except Exception as error:
-        log('■■■ ALKiln Error ALKP0010: Error while running tests. See below.')
+        log('■■■ ALKiln Error ALKP0010: Error while running tests:')
         log(error)
-      
-    except Exception as error:
+
+    except Exception as test_run_error:
+      import traceback
+  
       # We get here even when the sub-processes fail
-      log( f'□□□ ALKiln test subprocess completed with { returncode }' )
-      # If it's within 10 seconds of the max time, assume it's an
-      # error for taking too long. Log the max time error.
-      
-    
+      log( f'□□□ ALKiP: The test subprocess completed with the returncode { returncode }:' )
+      log(test_run_error)
+      log("\n".join( traceback.format_exception( test_run_error ) ))
+
       # Check if the process completed successfully
-      if returncode != 0:
+      # Discuss: what should behavior here be? Where do we catch it
+      # lower down?
+      # Discuss: Consolidate failure messages into 1 message
+      if returncode != None and returncode != 0:
         # Reraise the error
         raise
     
@@ -592,19 +657,22 @@ code: |
       # Always create output of some kind
       
       # Terminate:
+      # You can test this by not stringifying env vars
       try:
-        os.killpg(os.getpgid( test_run_pid ), signal.SIGTERM)
-        # When `.communicate` runs out of time, it doesn't complete
-        # the process, so the process still has to finish (by
-        # dying, in this case). Make sure the process is fully
-        # terminated. Low level interface.
-        process.wait()
-      except ProcessLookupError as error:
-        # The process is already terminated
+        if defined("test_run_pid"):
+          os.killpg(os.getpgid( test_run_pid ), signal.SIGTERM)
+          # When `.communicate` runs out of time, it doesn't complete
+          # the process, so the process still has to finish (by
+          # dying, in this case). Make sure the process is fully
+          # terminated. Low level interface.
+          process.wait()
+        else:
+          log('■■■ ALKiln Error ALKP0031: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by interrupted ALKiln installations. It often comes with the message "expected str, bytes or os.PathLike object, not bool". You can try running `rm -rf /var/www/.npm-global/bin` and `rm -rf /var/www/.npm-global/lib`, then restart this interview. To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository.')
+      except ProcessLookupError as already_terminated_error:
         pass
-      except Exception as error:
-        log('■■■ ALKiln Error ALKP0011: Error while stopping tests. See below.')
-        log(error)
+      except Exception as termination_error:
+        log('■■■ ALKiln Error ALKP0011: Error while stopping tests:')
+        log(termination_error)
         
       # Output:
   
@@ -614,14 +682,27 @@ code: |
         stdout = test_output[0].decode('utf-8')
         stderr = test_output[1].decode('utf-8')
 
-      # I believe only one of the list items will exist at a time
-      output_main = '\n'.join( text for text in [ f'node process return code: { showifdef("returncode", "None") }', showifdef('timeout_output', ''), showifdef('stdout', ''), showifdef('stderr', '') ] if text )
+      return_code_msg = ''
+      if showifdef("returncode", "None") == None:
+        # Discuss: Add link to worker log?
+        return_code_msg = """The test process terminated before finishing
+  (the returncode was `None`). Check your worker.log
+  and feel free to get in touch with us.\n"""
+      elif showifdef("returncode", "None") != 0:
+        # Discuss: Add link to worker log?
+        return_code_msg = """The test process finished, but it ran into 
+  an error. We hope there is more information on this
+  page or in your worker.log.\n"""
+
+      # Discuss: If return code None, link to logs? Enough links around?
+      output_main = '\n'.join( text for text in [ return_code_msg, showifdef('timeout_output', ''), showifdef('stdout', ''), showifdef('stderr', '') ] if text )
+
       log(f'□□□ ALKiln test run output:\n{ output_main }' )
       
       background_response( output_main )
 ---
 code: |
-  has_run_tests = False
+  has_started_tests = False
 ---
 prevent going back: True
 event: waiting_screen
@@ -677,6 +758,7 @@ code: |
   files_html = get_files_html(folder_name)
   if files_html == None:
     file_problem = True
+  _debug(f'file_problem: { file_problem }')
   run_get_files_html = True
 ---
 code: |
@@ -698,6 +780,8 @@ code: |
       folder_name = json.load(config)['artifacts_path']
     return folder_name
 ---
+need:
+ - get_file_html
 code: |
   import os
   import subprocess
@@ -836,12 +920,13 @@ code: |
     
     return html
 ---
+id: non-feature files
 code: |
   def get_file_html(name='', path=''):
     # Show a DAFile for each file
     da_file = DAFile()
     da_file.initialize(filename=f'{space_to_underscore(name)}')
-    da_file.copy_into(f'{path}')
+    da_file.copy_into( path )
     da_file.commit()
     
     if name.endswith('.txt'):
@@ -858,7 +943,7 @@ code: |
     
     return html
 ---
-id: remove files
+id: remove/delete files
 code: |
   import os
   
@@ -878,7 +963,6 @@ code: |
   
   # https://stackoverflow.com/a/32949415/14144258
   import glob
-  
   # Remove leftover puppeteer stuff if it exists (e.g. if the user
   # stopped the tests early)
   # https://github.com/puppeteer/puppeteer/issues/6414
