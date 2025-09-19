@@ -1,3 +1,4 @@
+# new TODO: Remove/delete `need`ing _debug and _log except at the very start
 ---
 metadata:
   title: |
@@ -8,6 +9,9 @@ metadata:
     Run ALKiln tests on your server. No GitHub required.
   under: |
     See guides for writing tests in the [ALKiln documentation](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/automated_integrated_testing).
+---
+include:
+  - artifacts.yml
 ---
 comment: |
   - Stop tests early: console output should show that tests were stopped early
@@ -64,17 +68,41 @@ code: |
     
   not_wants_tags
   tag_expression
+
+  if (
+    ( artifacts_folder_and_runtime_config_final_status == 'done' and artifacts_errored )
+  ):
+    setup_errored = True
+  else:
+    setup_errored = False  
+  
+  if setup_errored:
+    _debug('One of the setup steps errored')
+    # If we expect ALKiln to have the necessary scripts then
+    # show the error on final screen
+    # (Note: We delete the original files after showing the output
+    # screen)
+    show_output  # terminating screen
+
+  _debug('Running alkiln tests')
+  test_run_output
   
   test_run_output
   if stopped_early or test_run_output.ready():
+    _debug(f'stopped_early: { stopped_early }')
     run_get_files_html
-    remove_tmp_files
+    # We remove the original files after showing the output screen
     show_output
   else:
     waiting_screen
+
+  show_output
 ---
 code: |
   end_time = current_datetime()
+---
+code: |
+  setup_outputs = []
 ---
 code: |
   if get_config('s3').get('enable'):
@@ -147,7 +175,7 @@ code: |
 code: |
   import subprocess
   import json
-    
+  
   def filter_versions_greater_or_equal(versions, minimum="0.0.0"):
     '''Given a list of strings of versions, return a new list of
     versions at or above the given minimum version.'''
@@ -753,118 +781,195 @@ code: |
 code: |
   test_start_time = current_datetime()
 ---
+need:
+  - folder_name
+  - folder_path
 code: |
-  folder_name = get_folder_name()
-  files_html = get_files_html(folder_name)
+  test_data = get_files_html( folder_name, folder_path )
+  files_html = test_data["html"]
+  test_run_outcome = test_data["outcome"]
   if files_html == None:
     file_problem = True
   _debug(f'file_problem: { file_problem }')
   run_get_files_html = True
----
-code: |
-  if file_problem or stopped_early:
-    no_output = True
-  else:
-    no_output = False
 ---
 # Does this absolutely need to be separate? Do we at times
 # want to avoid calling get_files_html()?
 code: |
   file_problem = False
 ---
-code: |
-  import json
-  
-  def get_folder_name():
-    with open('/tmp/runtime_config.json') as config:
-      folder_name = json.load(config)['artifacts_path']
-    return folder_name
----
+# new TODO: remove irrelevant `need`s
+# new TODO: Change 007: "error making files output" type of thing
+# new TODO: Change second 007 to something more relevant too
+# new TODO: Discuss using root_path instead of "/tmp" with cwd everywhere
 need:
+ - _log
+ - _debug
+ - zip_name_no_ext
+ - zip_name
  - get_file_html
 code: |
   import os
   import subprocess
   
-  def get_files_html(folder_name):
-    '''Return html to show files in the artifacts folder.
-       Syntax highlighting.'''
-    
-    folder_exists = os.path.exists(f'/tmp/{folder_name}')
-    if not folder_exists:
-      return None
+  def get_files_html(folder_name_, folder_path_):
+    '''Return html to show artifacts files and artifacts zip.'''
+
+    test_run_outcome = None
+  
+    if folder_path_ is None:
+      _log('■■■ ALKiP Error ALKP0007: error zipping artifacts folder at "{ folder_path_ }" to { zip_path }:')
+      return {"html": None, "outcome": None}
     
     html = ''
     
-    safe_zip_name = get_zip_name(folder_name)
-    zip_process = subprocess.run(['zip', '-r', f'{safe_zip_name}', f'{folder_name}'], cwd="/tmp", check=False, capture_output=True)
+    _debug('💡 ALKP0040 ALKiln will try to save the artifacts zip with the name ' + zip_name_no_ext )
+
+    # TODO: does cwd control where zip is saved or where subprocess
+    # looks for the folder?
+    # zip_name_no_ext "the_zip", folder_name_ "the_folder"
+    # folder_path_ "/tmp/the_folder"
+    zip_process = subprocess.run(['zip', '-r', '-v', f'{ zip_name_no_ext }', f'{ folder_name_ }'], cwd="/tmp", check=False, capture_output=True)
+
+    if zip_process.stdout:
+      _debug('💡 ALKiP NOTE ALKP0042: zipped artifacts folder. stdout:')
+      _debug( zip_process.stdout )
+
+    zip_path = get_zip_path()["path"]
+  
+    # Zip section
+    html += '<div class="section zip">\n'
+
+    # Folder path was fine, but unable to make zip
     if zip_process.returncode != 0:
-      log('■■■ ALKiln Error ALKP0007: error zipping artifacts folder:')
-      log(zip_process.stderr.decode("utf-8"))
+      _log('■■■ ALKiP Error ALKP0007: error zipping artifacts folder at "{ folder_path_ }" to { zip_path }:')
+      _log(zip_process.stderr.decode("utf-8"))
+      html += '<span>ALKilnInThePlayground was unable to create a zip file for the artifacts. See your <a target="_blank" href="${url_of("root", _external=True)}/logs?file=docassemble.log">docassemble.log</a> for more details.</span>\n'
+
+      # There is technically no reason to stop here since the folder seems
+      # to exist and we can hope to show some output from there.
+  
     else:
+      _debug(f'ALKP0018 ALKiln saved the zip file correctly to "{ zip_path }".')
       zip_da_file = DAFile()
-      zip_da_file.initialize(filename=f'{safe_zip_name}.zip')
-      zip_da_file.copy_into(f'/tmp/{safe_zip_name}.zip')
+      zip_da_file.initialize( filename=zip_name )
+      zip_da_file.copy_into( zip_path )
       zip_da_file.commit()
     
-      # Zip section
-      html += '<div class="section zip">\n'
-      html += f'{ action_button_html(zip_da_file.url_for(), label="Download all test files and folders", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }\n'
-      html += '</div>\n'
+      html += f"""
+        <div>{ action_button_html(zip_da_file.url_for(), label="Download all files and folders ALKiln created", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }</div>
+  
+        <div class="to_console">
+          <a href="#console" markdown="1" class="btn btn-secondary" type="button">:arrows-down-to-line: Jump down to the full console logs</a>
+        </div>
+      """
+  
+    html += '</div>\n'  # ends zip section
     
     # collect top-level names and paths.
     top_dirs = []
     top_files = []
+    top_other = []
     # A bit faster than other methods, though that doesn't matter much here so far. https://stackoverflow.com/a/62478211/14144258
-    with os.scandir(f'/tmp/{folder_name}') as scan:
+    with os.scandir( folder_path_ ) as scan:
       for dir_item in scan:
+        _debug(f'Scanning { folder_path_ }/{ dir_item.name }')
         if dir_item.is_file():
           top_files.append(dir_item)
         elif dir_item.is_dir():
           top_dirs.append(dir_item)
-    
-    # ====== "Root" level output ======
-    html += '<div class="section top_level">\n'
-    html += '<h2>Summary files</h2>\n'
+        else:
+          top_other.append(dir_item)
+
+    # ====== "Root" level directories ======
+    top_dirs.sort(key=lambda dir: dir.name)
+  
+    # ====== "Root" level files section ======
+    html += '<div class="section quick_view">\n'
+    html += '<h2>Quick view</h2>\n'
+    html += '<aside>Reports, error screenshots, etc.</aside>\n'
     html += '<div class="output card card-body">\n'
-    
+
     # Show files that are for the all the tests combined
     # This includes error screenshots
-    top_images_html = ''
-    top_other_files_html = ''
+    summary_images_html = ''
+    summary_other_files_html = ''
     report_html = ''
+    summary_files_exist = False
     top_files.sort(key=lambda file: file.name)
     for file in top_files:
       file_html = get_file_html(name=file.name, path=file.path)
-      if file.name.endswith('.jpg'):
-        top_images_html += file_html
+
+      # Non-summary files
+      # Discuss: should these be summary files too? Should
+      # "debug_log" be listed if "report" is missing?
+      if file.name == 'debug_log.txt':
+        with open(file.path, 'r') as report:
+          content = report.read()
+        if 'ALK0099' in content:
+          test_run_outcome = 'failed'
+        elif 'ALK0055' in content:
+          test_run_outcome = 'unexpected'
+        elif 'ALK0054' in content:
+          test_run_outcome = 'passed'
+      elif file.name == 'temp_unexpected_results_debug_log.txt':
+        # TODO: Only skip this file if the "unexpected results" file did get created at the end
+        continue
+      # TODO: Add "unexpected results" file? Above or below
+      # the report file?
+      # Discuss: (ALKiln) Output content in general
+
+      # Summary files
       else:
-        if file.name == 'report.txt':
+        summary_files_exist = True
+        if file.name.endswith('.jpg'):
+          summary_images_html += file_html
+        elif file.name == 'report.txt':
           report_html = file_html
         else:
-          top_other_files_html += file_html
+          summary_other_files_html += file_html
+
+    if summary_files_exist:
+      html += f"""
+          <ul class="text_files">
+            {report_html}
+            {summary_other_files_html}
+          </ul>
+          """
+      if summary_images_html != '':
+        html += f"""
+          <hr>
+          <ul class="images">
+            {summary_images_html}
+          </ul>
+          """
+    else:
+      html += """
+        <div class="no_output">
+          <p>ALKiln found no summary files (like report.txt). Maybe no tests ran. Some questions to ask:</p>
+          <ul>
+            <li>Does the console output show that the tests ran "0 scenarios"?</li>
+            <li>Does your Sources folder contain files ending in ".feature"?</li>
+            <li>Does <a href="#report">the console output at the bottom of this page</a> show that ALKiln ran into an error before it could run any of your tests?</li>
+            <li>If you used a <a href="https://assemblyline.suffolklitlab.org/docs/components/ALKiln/writing/#tags:~:text=Tag%20expression-,What%20tests%20run%3F,-%40likes_bears">tag expression</a>, do you have a typo in your tag expression?</li>
+          </ul>
+        </div>
+        """
     
-    # At least report and debug log
-    html += f'<ul class="text_files">\n{report_html}\n{top_other_files_html}\n</ul>\n'
-    if top_images_html != '':
-      html += '<hr>\n'
-      html += f'<ul class="images">\n{top_images_html}\n</ul>\n'
-    
-    # End top-level output contents
+    # End summary files items
     html += '</div>\n'
-    # End top-level output section
+    # End summary files section
     html += '</div>\n'
-    
+
+    # ====== Nested dirs output ======
+  
     # ====== Start all Scenarios ======
     html += '<div class="section scenarios">\n'
-    
-    # Show files in each Scenario
-    top_dirs.sort(key=lambda dir: dir.name)
-    html += '<h2>Scenario files</h2>\n'
+    html += '<h2>Scenarios</h2>\n'
     
     # For each Scenario
     for dir in top_dirs:
-      
+  
       html += '<div class="output card card-body scenario">\n'
       html += f'<h3>Scenario: {dir.name}</h3>\n'
       
@@ -878,14 +983,17 @@ code: |
         templates_html = ''
         other_files_html = ''
         
+        if len(file_names) == 0:
+          html += '<div class="no_files">ALKiln stored 0 artifact files for this Scenario.</div>'
+        
         for file_name in file_names:
           abs_path = os.path.abspath(os.path.join(root_path, file_name))
           file_html = get_file_html(name=file_name, path=abs_path)
-          
           if file_name.endswith('.txt'):
             text_files_html += file_html
           elif file_name.endswith('.jpg'):
-            # TODO: put error screenshots at the top
+            # Discuss: carrousel for error screenshots section?
+            # Discuss: sym link to images instead of duplicate?
             images_html += file_html
           elif file_name.endswith('.pdf') or file_name.endswith('.docx'):
             # TODO: need more flexibility for other types of downloaded files
@@ -893,9 +1001,6 @@ code: |
           else:
             # Not sure what these'll be
             other_files_html += file_html
-        
-        if len(file_names) == 0:
-          html += '<div class="no_files">No files.</div>'
         
         if text_files_html != '':
           html += f'<ul class="text_files">\n{text_files_html}\n</ul>\n'
@@ -910,15 +1015,18 @@ code: |
         if other_files_html != '':
           html += '<hr>\n'
           html += f'<ul class="other_files">\n{other_files_html}\n</ul>\n'
-      # End one Scenario
+      # Ends one Scenario
       html += '</div>\n'
+  
     else:
-      html += '<div>There are no files for these tests.</div>'
+      html += '<div class="output card card-body scenario">\n'
+      html += '<div class="no_output">ALKiln found no output files.</div>\n'
+      html += '</div>\n'
       
     # End all Scenarios
     html += '</div>\n'
     
-    return html
+    return { "html": html, "outcome": test_run_outcome }
 ---
 id: non-feature files
 code: |
@@ -943,23 +1051,33 @@ code: |
     
     return html
 ---
+# new TODO: Delete `need`s except `folder_path`
+# new TODO: Move to files helper section
 id: remove/delete files
+need:
+  - _log
+  - _debug
+  - folder_name
+  - folder_path
 code: |
-  import os
+  # Let this block run regardless just in case it can manage to clean
+  # something up
   
-  safe_zip_name = get_zip_name(folder_name)
+  zip_path = get_zip_path()["path"]
+  
+  import os
   try:
-    os.remove(f'/tmp/{safe_zip_name}.zip')
+    os.remove( zip_path )
   except Exception as error:
-    log('■■■ ALKiln Error ALKP0008: error removing ZIP:')
-    log(error)
+    _log(f'🖊️ ALKiln Note ALKP0008: skipped removing old "{ zip_path }"')
+    _debug(error)
   
   import shutil
   try:
-    shutil.rmtree(f'/tmp/{folder_name}')
+    shutil.rmtree( folder_path )
   except Exception as error:
-    log('■■■ ALKiln Error ALKP0009: error removing FOLDER:')
-    log(error)
+    _log(f'🖊️ ALKiln Note ALKP0009: skipped removing "{ folder_path }"')
+    _debug(error)
   
   # https://stackoverflow.com/a/32949415/14144258
   import glob
@@ -972,12 +1090,14 @@ code: |
   
   remove_tmp_files = True
 ---
+# new TODO: Remove block
 code: |
   import re
   
   def get_zip_name(folder_name):
     return re.sub("( )+", "_", folder_name)
 ---
+# new TODO: Remove bottom text "couldn't delete artifacts"
 prevent going back: True
 event: show_output
 question: |
@@ -1001,32 +1121,57 @@ subquestion: |
   Elapsed time: <b>${ str(date_difference( ending=end_time, starting=test_start_time ).delta) }</b>
   </div>
   
-  <div class="to_console">
-  <a href="#report">Tap to see full console printout below</a>
-  </div>
-  
-  </div>
-  
-  % if file_problem:
-  <p class="alert alert-danger">
-  The installed version of ALKiln did not create any output which means the tests did not run. Your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log"> worker.log</a> or your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=docassemble.log">docassemble.log</a> might have more information.
-  </p>
-  ${ test_output_template }
-  % else:
-  ${ files_html }
-  
-  ${ test_output_template }
-  % endif
   </div>
 
+  % if artifacts_errored:
+  ${ setup_error_html }
+  % endif
+  
+  % if file_problem:
+  <div class="alert alert-danger" markdown="1">
+  % if config_path is None:
+  ${ config_path_problem }
+  % endif
+
+  % if folder_path is None:
+  ${ folder_path_problem }
+  % endif
+
+  % if get_zip_path()["path"] is None:
+  ${ get_zip_path()["problem"] }
+  % endif
+
+  The installed version of ALKiln did not create any files. Your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log"> worker.log</a> or your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=docassemble.log">docassemble.log</a> might have more information.
+  </div>
+
+  % else:
+  ${ files_html }
+  % endif
+
+  ${ test_output_template }
+  </div>
+
+  ${ "" if remove_tmp_files else "" }
 buttons:
   - Run new tests: new_session
 ---
+code: |
+  test_run_outcome = None
+---
+need:
+  - folder_name
 template: test_output_template
 content: |
   <div class="console_output">
   <div class="section">
-  <h2 id="report">Console output</h2>
+  <h2 id="console">Console output</h2>
+  <pre>Temp console content during transition to ravioli</pre>
+  </div>
+  </div>
+comment: |
+  <div class="console_output">
+  <div class="section">
+  <h2 id="console">Console output</h2>
   <pre><code>
   % if no_output or test_run_output.get() is None or test_run_output.get() == 'None':
   No console output
@@ -1038,6 +1183,174 @@ content: |
   </code></pre>
   </div>
   </div>
+---
+template: setup_error_html
+content: |
+  <div class="setup_error alert alert-danger">
+  <p>Test setup errored. Here are examples of why this can happen:</p>
+  <ul>
+  <li>Invalid ".feature" files</li>
+  <li>An internal ALKiln error.</li>
+  </ul>
+  </br>
+  <p>You might see console output below and you might also find more information in your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log">worker.log</a> or your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=docassemble.log">docassemble.log</a>.</p>
+  </div>
+---
+# Filepaths
+---
+need:
+  - get_existing_path
+code: |
+  temp_config_path = get_existing_path( "runtime_config.json" )
+  if temp_config_path is None:
+    config_path_problem = 'No "runtime_config.json" file exists.'
+    _log(f'🤕 ALKiP Error ALKP0033: { config_path_problem }')
+  config_path = temp_config_path
+---
+id: default config_path_problem
+code: |
+  config_path_problem = ''
+---
+# new TODO: Reword comment—Need folder_name to try various folder_path values. Need various values for compatibility with old ALKiln versions. See `get_existing_path()` notes
+# Need folder_name to try various folder_path values for
+# compatibility. See `get_existing_path()` notes
+id: artifacts folder name
+need:
+  - _debug
+  - config_path
+code: |
+  import os
+  
+  if config_path is None:
+    temp_folder_name = 'no config'
+
+  else:
+    with open( config_path ) as config_text:
+
+      try:
+        temp_folder_name = json.load( config_text ).get('artifacts_path', 'no value')
+  
+      except Exception as config_load_error:
+        temp_folder_name = 'no json'
+        _log(f'🤕 ALKiP Error ALKP0035: Error loading json from config file at "{ config_path }":')
+        _log( config_load_error )
+  
+      if temp_folder_name == 'no value':
+        _log(f'🤕 ALKiP Error ALKP0034: Config file at "{ config_path }" has no "artifacts_path" value.')
+
+  _debug(f'temp_folder_name: { temp_folder_name }')
+  root_path = os.path.dirname( temp_folder_name )
+  _debug(f'root_path: { root_path }')
+  folder_name = os.path.basename( temp_folder_name )
+  _debug(f'folder_name: { folder_name }')
+---
+# new TODO: fix: "folder_path tries different locations till it finds the real one"
+# folder_name tries various folder_path values for
+# compatibility. See `get_existing_path()` notes. Used to get
+# folder to make zip and to delete folder.
+need:
+  - _log
+  - get_existing_path
+  - folder_name
+code: |
+  temp_folder_path = get_existing_path( dir_name=folder_name )
+  if temp_folder_path is None:
+    folder_path_problem = f'Unable to find artifacts folder at "{ folder_name }".'
+    _log(f'🤕 ALKiP Error ALKP0039: { folder_path_problem }')
+  folder_path = temp_folder_path
+---
+id: default folder_path_problem
+code: |
+  folder_path_problem = ''
+---
+# Need zip_name_no_ext to save the new zip file without ".zip"
+need:
+  - very_safe_name
+  - folder_name
+code: |
+  _debug( f"very_safe_name( folder_name ): {very_safe_name( folder_name )}" )
+  zip_name_no_ext = very_safe_name( folder_name )
+---
+# Need zip_name to avoid duplicating adding ".zip" to get
+# correct zip_path value and to name zip file.
+need:
+  - zip_name_no_ext
+code: |
+  _debug( f"zip_name_no_ext .zip: { zip_name_no_ext }.zip" )
+  zip_name = f"{ zip_name_no_ext }.zip"
+---
+# new TODO: Describe what it's used for - to put contents into the DAFile once the zip is stored wherever it is stored.
+# new TODO: "get_zip_path tries..."
+# zip_path tries various zip_path values for compatibility
+# See `get_existing_path()` notes. Need zip_path to get zip
+# DAFile and to remove zip
+need:
+  - _debug
+  - zip_name
+code: |
+  def get_zip_path():
+    zip_path_problem = ''
+    zip_path = get_existing_path( file_name=zip_name )
+    if zip_path is None:
+      zip_path_problem = f'Unable to find a file called "{ zip_name }".'
+      _log(f'🤕 ALKiP Error ALKP0041: { zip_path_problem }')
+    _debug( f"zip_path: { zip_path }" )
+    return { "path": zip_path, "problem": zip_path_problem }
+---
+# Older versions of ALKiln's config named relative paths
+# Newer versions have absolute paths
+need:
+  - _debug
+code: |
+  def get_existing_path( dir_name=None, file_name=None ):
+    if dir_name != None:
+      return get_existing_dir_path( dir_name )
+    if file_name != None:
+      return get_existing_file_path( file_name )
+    _debug("🖊️ ALKP0036: `get_existing_path` got no valid arguments")
+    return None
+---
+need:
+  - _log
+  - root_path
+code: |
+  import os
+  
+  def get_existing_dir_path( dir_name ):
+    """
+    """
+    # if "/tmp/the_dir"
+    if os.path.exists( dir_name ):
+      return dir_name
+  
+    # if "the_dir"
+    if os.path.exists(f'{ root_path }/{ dir_name }'):
+      return f'{ root_path }/{ dir_name }'
+
+    # if "the_dir" and root_path broken, make a last ditch effort
+    if os.path.exists(f'/tmp/{ dir_name }'):
+      return f'/tmp/{ dir_name }'
+
+    _log(f'🖊️ ALKP0037: Found no "{ dir_name }", "{ root_path }/{ dir_name }", or "/tmp/{ dir_name }" directory')
+    return None
+---
+need:
+  - _log
+  - root_path
+code: |
+  import os
+  
+  def get_existing_file_path( file_name ):
+  
+    if os.path.isfile( file_name ):
+      return file_name
+    if os.path.isfile(f'{ root_path }/{ file_name }'):
+      return f'{ root_path }/{ file_name }'
+    if os.path.isfile(f'/tmp/{ file_name }'):
+      return f'/tmp/{ file_name }'
+  
+    _log(f'🖊️ ALKP0038: Found no "{ file_name }", "{ root_path }/{ file_name }", or "/tmp/{ file_name }" file')
+    return None
 ---
 ---
 id: very strict name sanitization
@@ -1090,4 +1403,9 @@ code: |
 ---
 code: |
   debugging = alkiln_config_vars.get('alkip_debug', False)
+---
+---
+# Default
+code: |
+  root_path = "/tmp"
 ---
