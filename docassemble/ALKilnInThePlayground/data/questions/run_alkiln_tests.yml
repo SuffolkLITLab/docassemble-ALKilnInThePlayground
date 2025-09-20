@@ -22,6 +22,7 @@ features:
 mandatory: True
 id: interview order
 need:
+  - npm_connection_msg
   - _log
   - _debug
 code: |
@@ -45,9 +46,12 @@ code: |
   
   if version_error == '':
     ask_version
-    if wants_install or invalid_install:
+  
+    if npm_connection_msg == "ok" and ( wants_install or invalid_install ):
+
       # Don't install if not needed
-      if started_with_different_version or invalid_install:
+      # new TODO: for some reason (at least when I switch between online and offline) we sometimes go to the install screen when going back to restart with a version number of "None". There are other shenanigans that happen when going back with restart. We have a lot to explore there. There are enough hiccups that it may be worth turning off restarting altogether.
+      if (started_with_different_version or invalid_install) and version_to_install:
         install_task
         # `.wait()` could cause a timeout
         if install_task.ready():
@@ -87,7 +91,6 @@ code: |
   _debug('Running alkiln tests')
   test_run_output
   
-  test_run_output
   if stopped_early or test_run_output.ready():
     _debug(f'stopped_early: { stopped_early }')
     run_get_files_html
@@ -172,6 +175,10 @@ code: |
 code: |
   undefine_install_task = False
 ---
+if: npm_connection_msg == "ok"
+need:
+  - npm_connection_msg
+  - _log
 code: |
   import subprocess
   import json
@@ -218,6 +225,13 @@ code: |
     alkiln_version_list = []
     version_error = ''
 ---
+if: npm_connection_msg != "ok"
+code: |
+  alkiln_major_versions = []
+  alkiln_prerelease_versions = []
+  alkiln_version_list = []
+  version_error = ""
+---
 id: which task with no alkiln installed
 if: |
   'Could not get' in get_installed_version() or invalid_install
@@ -256,27 +270,74 @@ validation code: |
   if not wants_install:
     validation_error('You must install a version of ALKiln')
 ---
+# TODO: Test this more
+# new TODO: In `if`, switch the order of checks
+id: pick which task with no alkiln installed and no npm connection
+event: ask_version
+if: |
+  ('Could not get' in get_installed_version() or invalid_install) and npm_connection_msg != "ok"
+need:
+  - npm_connection_msg
+  - get_installed_version
+  - invalid_install
+question: |
+  Unable to install ALKiln
+subquestion: |
+  It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason.
+
+  For example, someone may have started installing a version and then cancelled installing the version. You need a new version of ALKiln.
+
+  <div class="alert alert-danger">
+  Unfortunately, ALKilnInThePlayground is unable to install ALKiln right now. ${ npm_connection_msg }
+  </div>
+action buttons:
+  - label: Restart
+    action: do_restart
+    icon: undo
+    color: warning
+---
+# new TODO: Move all the npm_connection stuff into one section
+# new TODO: (For the future) Don't need `if` around news request I think. Double check.
+# new TODO: Discuss adding explicit refresh button
+# new TODO: Add "Running offline" info callout to every page when offline
 id: which task with prexisting version
 if: |
   not 'Could not get' in get_installed_version() and not invalid_install
 need:
+  - npm_connection_msg
   - invalid_install
   - get_installed_version
 question: |
   ALKiln version
 subquestion: |
-  The server's current version of ALKiln is:[BR]
-  **${ get_installed_version() }**
+  This server's current version of ALKiln is **${ get_installed_version() }**
   
-  Do you want to install a different version of ALKiln before testing? **While it is installing you will have to avoid the following**:
-  
-  - Saving a python module
-  - Pulling or uploading a package with a python module
-  - Otherwise causing the server to reload, restart, or stop
+  % if npm_connection_msg == "ok":
+  Do you want to install a different version of ALKiln before testing?
+
+  % else:
+  <div class="alert alert-secondary">
+  ALKilnInThePlayground is unable to install a different version of ALKiln right now. ${ npm_connection_msg }
+  </div>
+
+  You can still continue to run tests with your current version of ALKiln.
+  % endif
   
 fields:
   - Install a different verison of ALKiln: wants_install
     datatype: yesno
+    show if:
+      code: |
+        npm_connection_msg == "ok"
+  - note: |
+      <div class="alert alert-warning" markdown="1">
+      While ALKiln is installing you should **try hard to avoid**:
+      
+      - Saving a python module
+      - Pulling or uploading a package with a python module
+      - Otherwise causing this server to reload, restart, or stop
+      </div>
+    show if: wants_install
   - ALKiln version: version_to_install
     js show if:
       val('wants_install') && !val('wants_experimental')
@@ -1097,7 +1158,6 @@ code: |
   def get_zip_name(folder_name):
     return re.sub("( )+", "_", folder_name)
 ---
-# new TODO: Remove bottom text "couldn't delete artifacts"
 prevent going back: True
 event: show_output
 question: |
@@ -1351,6 +1411,69 @@ code: |
   
     _log(f'🖊️ ALKP0038: Found no "{ file_name }", "{ root_path }/{ file_name }", or "/tmp/{ file_name }" file')
     return None
+---
+id: try to connect to npm
+need:
+  - try_to_connect
+reconsider: True
+code: |
+  npm_connection_msg = try_to_connect()
+---
+id: check npm connection works
+code: |
+  import requests
+  import traceback
+  import logging
+  
+  def try_to_connect(url: str = "https://registry.npmjs.org/", timeout: float = 5.0) -> requests.Response:
+    """
+    Perform a GET request that times‑out after `timeout` seconds.
+    Raises requests.HTTPError for 4xx/5xx status codes.
+    """
+    try_later = ". To install any ALKiln version you might have to try again later"
+    we_cant_help = ". The ALKiln team is unable to help with this problem"
+  
+    try:
+      response = requests.get(url, timeout=timeout)
+      # response.raise_for_status()  # Don't raise an error
+  
+      if response.status_code >= 400 and response.status_code < 500:
+        connection_msg = f"ALKilnInThePlayground sent an incorrect request to the servers that store ALKiln and got a { response.status_code } response code. Please get in touch with the ALKiln developers."
+        _log(f"🤕 ALKP0046 Error: { connection_msg }")
+        _log( traceback.format_exc() )
+  
+      if response.status_code >= 500 and response.status_code < 600:
+        connection_msg = f"The servers that store the ALKiln package were unavailable. ALKilnInThePlayground got a { response.status_code } response code{ try_later }."
+        _log(f"🤕 ALKP0046 Error: { connection_msg }")
+        _log( traceback.format_exc() )
+        "Failed to connect to the servers that store ALKiln."
+
+      if response.ok:
+        connection_msg = "ok"
+  
+    except requests.exceptions.ConnectionError as con_err:
+      # This server isn't connected to the internet or there is some other
+      # connection problem
+      # Discuss: This explanation is a possible rabbit hole for the authors:
+      #     "ALKiln is stored on a third-party server that we trust, npmjs."
+      connection_msg = f'ALKilnInThePlayground is unable to connect to the server where ALKiln is stored{ we_cant_help }{ try_later }.'
+      _log("🤕 ALKP0047 Error: npmjs ConnectionError. ALKilnInThePlayground is unable to connect to the server where ALKiln is stored. The author's docassemble server might be disconnected from the internet, npmjs' server may be unavailable, or something else may be wrong{ we_cant_help }{ try_later }. Stacktrace:")
+      _log( traceback.format_exc() )
+  
+    except requests.RequestException as req_err:
+      ## You can log or re‑raise with more context
+      #raise RuntimeError(f"Failed to GET {url!r}: {req_err}") from exc
+      # print('RequestException')
+      connection_msg = 'ALKilnInThePlayground ran into a "RequestException" error when it tried to connect to the server that stores the ALKiln package{ try_later }'
+      _log(f"🤕 ALKP0048 Error: { connection_msg }. Stacktrace:")
+      _log( traceback.format_exc() )
+  
+    except Exception as general_err:
+      connection_msg = f'ALKilnInThePlayground ran into a "{ type(general_err).__name__ }" error when it tried to connect to the server that stores the ALKiln package.'
+      _log(f"🤕 ALKP0048 Error: { connection_msg } Stacktrace:")
+      _log( traceback.format_exc() )
+
+    return connection_msg
 ---
 ---
 id: very strict name sanitization
