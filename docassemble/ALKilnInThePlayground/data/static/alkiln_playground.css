@@ -1,3 +1,8 @@
+body {
+  note: "Temporary value. JS will change it later if allowed. Also happens to be the current nav height."
+  --nav-bar-height: 56px;
+}
+
 .da-field-container:has(*[disabled]) * {
   color: var(--bs-light-text);
 }
@@ -14,10 +19,20 @@
   margin-bottom: 1em;
 }
 
-#alkiln_test_output .output {
+.output {
   background: rgba(var(--bs-primary-rgb), .2);
-  border: 1px solid var(--bs-primary);
+  border: 1px solid var(--bs-secondary);
   margin-bottom: 1em;
+}
+
+#alkiln_test_output .output:has(.no_output) {
+  background: rgba(var(--bs-secondary-rgb), .2);
+  border: 1px solid var(--bs-secondary);
+  margin-bottom: 1em;
+}
+
+#alkiln_test_output .setup_error.alert {
+  max-height: unset;
 }
 
 #alkiln_test_output li {
@@ -30,8 +45,25 @@
   margin: 0;
 }
 
-/* Potentially make a 'carousel' of images or something when there are too many. E.g. when we add the ability to take a pic with every story table page. */
+#alkiln_test_output .quick_view .no_output ul {
+  list-style: inherit;
+  padding-left: 1em;
+}
+
+.alert-danger, .alert-warning {
+  height: fit-content;
+  max-height: fit-content;
+}
+.alert > :last-child {
+  margin-bottom: 0;
+}
+#alkiln_test_output .alert ol,
+#alkiln_test_output .alert ul {
+  list-style: inside;
+}
+
 #alkiln_test_output .images {
+  note: "Potentially make a 'carousel' of images or something when there are too many. E.g. when we add the ability to take a pic with every story table page.";
 }
 
 #alkiln_test_output .thumbnail {
@@ -45,4 +77,39 @@ pre {
 
 .spinner-container {
   padding-bottom: 1rem;
+}
+
+iframe#alkiln_notifications {
+  background: transparent;
+  border: none;
+  width: 100%;
+}
+
+.accordion.output {
+  background: var(--bs-accordion-active-bg);
+}
+
+.output .accordion-item,
+.output .accordion-header {
+  background: inherit;
+}
+
+h2 {
+  note: "It's difficult to make this act like regular text (for the pointer) when its z-index is lower than its siblings, but if we give a higher z-index than siblings any copy buttons in a sibling (in the same virtical position, like for the console output) then becomem hard to make clickable";
+  neutralized: "z-index: 1;";
+  neutralized: "position: relative;";
+}
+
+.sticky_scroll {
+  position: sticky;
+  z-index: 1;
+}
+
+.jump_up {
+  margin-top: 0.5em;
+}
+
+.jump_destination {
+  scroll-margin-top: calc(var(--nav-bar-height) + 1em);
+  overflow: auto;
 }
