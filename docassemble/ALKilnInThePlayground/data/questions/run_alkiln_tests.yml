@@ -18,6 +18,8 @@ comment: |
 ---
 features:
   css: alkiln_playground.css
+  javascript:
+    - alkiln_notifications.js
 ---
 mandatory: True
 id: interview order
@@ -49,6 +51,13 @@ code: |
   
     if npm_connection_msg == "ok" and ( wants_install or invalid_install ):
 
+      alkiln_current_version = "5.15.0" # testing
+      alkip_version = "1.3.1"  # testing
+  
+      # Show pre-installation ALKiln announcements if needed
+      if ( post_install_request_news != None ):
+        read_the_news
+  
       # Don't install if not needed
       # new TODO: for some reason (at least when I switch between online and offline) we sometimes go to the install screen when going back to restart with a version number of "None". There are other shenanigans that happen when going back with restart. We have a lot to explore there. There are enough hiccups that it may be worth turning off restarting altogether.
       if (started_with_different_version or invalid_install) and version_to_install:
@@ -310,6 +319,10 @@ need:
 question: |
   ALKiln version
 subquestion: |
+  % if npm_connection_msg == "ok":
+  ${ pre_install_request_news_template }
+  % endif
+  
   This server's current version of ALKiln is **${ get_installed_version() }**
   
   % if npm_connection_msg == "ok":
@@ -394,6 +407,208 @@ code: |
         server_version = matches.group(1)
         del matches # cannot pickle error otherwise
     return server_version
+---
+reconsider: True
+id: alkip_version
+code: |
+  # import importlib
+  
+  # # In an installed package:
+  # try:
+  #   alkip_version = importlib.metadata.version( current_context().package )
+  
+  # # TODO: How to get playground project version
+  # except:
+  #   alkip_version = 'development'  # Don't show any notifications in development environment until we work this out
+  
+  alkip_version = '1.4.0'  # testing. TODO: remove
+---
+reconsider: True
+id: alkiln_current_version
+code: |
+  alkiln_current_version = get_installed_version()
+---
+reconsider: True
+id: alkiln_desired_version
+code: |
+  if defined('ask_version') and wants_install:
+    alkiln_desired_version = version_to_install
+  else:
+    alkiln_desired_version = None
+  _debug(f"version_to_install: {version_to_install}")
+---
+reconsider: True
+id: dal_version
+code: |
+  dal_version = None  # Discuss: needed? Not implemented for now.
+---
+reconsider: True
+id: da_update_version
+code: |
+  da_update_version = get_config('python version')
+---
+reconsider: True
+id: da_docker_run_version
+code: |
+  da_docker_run_version = get_config('system version')
+---
+id: live breaking news
+need:
+  - has_command
+  - alkip_version
+  - alkiln_current_version
+  - alkiln_desired_version
+  - dal_version
+  - da_update_version
+  - da_docker_run_version
+  - env_vars
+  - log_broad_news_exception
+code: |
+  import subprocess
+  import os
+  import re
+  
+  def get_the_news():
+    """
+    Will use `try` to avoid causing any stopping errors.
+    """
+    bin_name = "alkiln-news"
+    news_cmd_exists = has_command( bin_name )
+    if not news_cmd_exists:
+      _debug(f"🖊️ ALKP0026 Note: The '{ bin_name }' command doesn't exist in this version of ALKiln")
+      return None
+
+    _debug(f"alkip_version {alkip_version}", "console")
+    _debug(f"alkiln_desired_version {alkiln_desired_version}", "console")
+    _debug(f"alkiln_current_version {alkiln_current_version}", "console")
+  
+    news_args_ob = {
+      'alkip_version': alkip_version,
+      'alkiln_desired_version': alkiln_desired_version,
+      'alkiln_current_version': alkiln_current_version,
+      'dal_version': dal_version,
+      'da_update_version': da_update_version,
+      'da_docker_run_version': da_docker_run_version
+    }
+    news_args_strs = [f'--{ key }={ value }' for key, value in news_args_ob.items() if value]
+  
+    to_run = [f'/var/www/.npm-global/bin/{ bin_name }'] + news_args_strs
+
+    _debug('news 1')
+    custom_env = dict( os.environ, **env_vars )
+    _debug('news 2')
+    returncode = None
+    
+    _debug('□□□ ALKiP: Starting ALKiln news bulletin check. Running:')
+    _debug(to_run)
+
+    try:
+      news_subprocess = subprocess.run(
+        to_run,
+        check=False,
+        capture_output=True,
+        env=custom_env
+      )
+
+      _debug(f"Ran news subprocess")
+  
+      if news_subprocess.returncode != 0:
+        news_err_msg = news_subprocess.stderr.decode('utf-8')
+        _log('🖊️ ALKiP NOTE ALKP0014: Skipped getting news bulletin from ALKiln')
+        _log( news_err_msg )
+        preprint = None
+      else:
+        preprint = news_subprocess.stdout.decode('utf-8')
+      
+      if preprint != None:
+        codes = ' '.join(re.findall(r'ALK\d{4}', preprint))
+        if ("ALK0278" in preprint or "ALK0279" in preprint):
+          _debug(f"□□□ ALKiP: Looked for notifications from ALKiln. There were none. No news is probably good news. Returned code or codes: { codes }")
+          preprint = None
+      
+        else:
+          _log(f"□□□ ALKiP: Found ALKiln notifications. If you can't already see them, refresh your interview screen. Returned code or codes: { codes }")
+  
+    except Exception as news_error:
+      define('broad_news_exception', news_error)
+      log_broad_news_exception( news_error )
+      preprint = None
+
+    return preprint
+---
+code: |
+  import traceback
+
+  def log_broad_news_exception( current_error ):
+    log_to_debug = True
+    if defined('broad_news_exception'):
+      if str(broad_news_exception) != str(current_error):
+        log_to_debug = False
+    else:
+      define('broad_news_exception', current_error)
+      log_to_debug = False
+
+    news_distributor_msg = f"🖊️ ALKiP: Unable to get the ALKiln notifications that come with ALKiln v5.16.0 or above. Potentially more info:"
+    if log_to_debug:
+      _debug( news_distributor_msg )
+      _debug("\n".join( traceback.format_exception( broad_news_exception ) ))
+    else:
+      _log( news_distributor_msg )
+      _log("\n".join( traceback.format_exception( broad_news_exception ) ))
+  
+    _debug("Logged broad news exception")
+---
+id: news before asking to install a different version of ALKiln
+need:
+  - get_the_news
+code: |
+  if not got_pre_install_request_news:
+    got_pre_install_request_news = True
+    pre_install_request_news = get_the_news() # Triggers function on every loop
+---
+id: default value for got_pre_install_request_news
+code: |
+  got_pre_install_request_news = False
+---
+need:
+  - pre_install_request_news
+template: pre_install_request_news_template
+content: |
+  % if pre_install_request_news != None:
+
+  <iframe id="alkiln_notifications"></iframe>
+  <div id="alkiln_broadsheet_content_data" data-broadsheet="${ encode_name( str( pre_install_request_news )) }" style="display: none;" aria-hidden="true"></div>
+  
+  % endif
+---
+id: post-install news
+code: |
+  post_install_request_news = get_the_news()
+  _debug("got the post-news:", "console")
+  _debug(post_install_request_news, "console")
+---
+template: post_install_request_news_template
+content: |
+  <iframe id="alkiln_notifications"></iframe>
+  <div id="alkiln_broadsheet_content_data" data-broadsheet="${ encode_name( str( post_install_request_news )) }" style="display: none;" aria-hidden="true"></div>
+---
+id: default already_started_news_broadcast value
+code: |
+  already_started_news_broadcast = False
+---
+id: deliver broken news
+question: |
+  Before you install ALKiln version ${ alkiln_desired_version }
+subquestion: |
+  This might change your mind about the version you want to install.
+
+  % if version_error == "" and post_install_request_news != None:
+  ${ post_install_request_news_template }
+  % endif
+
+  If you want to pick a different version, go back a screen. If not, keep going!
+continue button field: read_the_news
+back button: True
 ---
 code: |
   install_task = background_action('install_alkiln', None, version=version_to_install)
@@ -685,8 +900,7 @@ code: |
     
     # Run the tests
     try:
-  
-      # cwd = os.getcwd()  # "/tmp"
+      # os.getcwd() is "/tmp"
   
       # Should we try/catch this function call?
       process = subprocess.Popen(
@@ -863,6 +1077,7 @@ code: |
 # new TODO: Change 007: "error making files output" type of thing
 # new TODO: Change second 007 to something more relevant too
 # new TODO: Discuss using root_path instead of "/tmp" with cwd everywhere
+# new TODO: Move "If you used a [tag expression..." so it's next to the "0 scenarios" item. Also, explain more what "0 scenarios" might mean
 need:
  - _log
  - _debug
