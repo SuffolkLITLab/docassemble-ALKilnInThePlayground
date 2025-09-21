@@ -43,7 +43,17 @@ Format:
 -
 -->
 
-<!-- ## [Unreleased] -->
+## [Unreleased]
+
+### Added
+
+- Added the constrained randomized test capabilities that GitHub-based tests already have. See [#41](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/41).
+- Added ALKiln notifications to show information about updates, issues, and version conflicts between ALKiln and ALKilnInThePlayground. See [#49](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/49).
+- Added offline capabilities. Authors and developers can now use ALKilnInThePlayground when they are offline. See [#46](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/46).
+- Added shiny new interactions on output page:
+   - Copy button for individual randomized files and console output
+   - Buttons to jump to the bottom and top of the console output
+   - Download buttons for individual randomized files and console output
 
 ## [1.3.1] - 2024-02-25
 

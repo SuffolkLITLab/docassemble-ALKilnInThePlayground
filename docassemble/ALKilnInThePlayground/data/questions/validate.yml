@@ -1,0 +1,87 @@
+---
+id: validate Gherkin feature files
+need:
+  - _log
+  - _debug
+  - has_command
+  - validation_errored
+  - sources
+code: |
+  import subprocess
+
+  # Get this now to avoid idempotency problems
+  setup_outputs
+  custom_env
+
+  setup_stage = 'validate'
+  validation_error_msgs = []
+  
+  # In case we need them later
+  validation_exception_message = f'■■■ ALKiln validation ERROR ALKP0017: While validating ".feature" files, ALKiln ran into an error we have not seen before.'
+  validation_stderr_message = f'■■■ ALKiln validation ERROR ALKP0045: Errored while trying to validate ".feature" files.'
+  
+  has_started_validation = True
+
+  # Gatekeeper
+  bin_name = "alkiln-validate"
+  vldn_cmd_exists = has_command( bin_name )
+  if not vldn_cmd_exists:
+    no_bin_msg = f"🖊️ ALKP0024 Note: The '{ bin_name }' command doesn't exist in this version of ALKiln"
+    _debug( no_bin_msg )
+    validate_feature_files_final_status = 'nonexistent'
+
+  else:
+    _debug(f"💡 ALKP0034 Info: The '{ bin_name }' command exists.")
+  
+    validation_subprocess = None
+    try:
+      validation_subprocess = subprocess.run(
+        [
+          f'/var/www/.npm-global/bin/{ bin_name }'
+          , f'--sources={ sources }'
+        ],
+        check=False,
+        capture_output=True,
+        env=custom_env
+        , cwd='/tmp'
+      )
+    
+    except Exception as validation_error:
+      validation_errored = True
+      _log( validation_exception_message )
+      _log( validation_error )
+      validation_error_msgs.extend([ validation_exception_message, validation_error ])
+      # Discuss: Should we `raise`? Should we stop? Keep going?
+      
+    if validation_subprocess and validation_subprocess.returncode != 0:
+      validation_errored = True
+      validation_stderr = validation_subprocess.stderr.decode('utf-8')
+      _log( validation_stderr_message )
+      _log( validation_stderr )
+      validation_error_msgs.extend([ validation_stderr_message, validation_stderr ])
+    
+    if validation_subprocess and validation_subprocess.stdout.decode('utf-8'):
+      # stdouts were actually created before the errors happened
+      setup_outputs.append( validation_subprocess.stdout.decode('utf-8') )
+    setup_outputs.extend( validation_error_msgs )
+
+    validate_feature_files_final_status = 'done'
+---
+id: default started validation value
+code: |
+  has_started_validation = False
+---
+id: default validation errored value
+code: |
+  validation_errored = False
+---
+if: |
+  has_started_validation
+code: |
+  validate_feature_files_final_status = 'repeated'
+---
+if: |
+  artifacts_folder_and_runtime_config_final_status == 'nonexistent' or artifacts_errored
+code: |
+  validate_feature_files_final_status = 'skipped'
+---

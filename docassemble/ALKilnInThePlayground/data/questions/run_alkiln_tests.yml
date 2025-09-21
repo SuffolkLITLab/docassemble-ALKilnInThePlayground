@@ -12,14 +12,20 @@ metadata:
 ---
 include:
   - artifacts.yml
+  - validate.yml
+  - generate.yml
 ---
 comment: |
   - Stop tests early: console output should show that tests were stopped early
 ---
 features:
-  css: alkiln_playground.css
+  css:
+    - alkiln_playground.css
+    - alkiln_copy_button.css
   javascript:
     - alkiln_notifications.js
+    - alkiln_copy_button.js
+    - nav_bar_based_css.js
 ---
 mandatory: True
 id: interview order
@@ -84,6 +90,8 @@ code: |
 
   if (
     ( artifacts_folder_and_runtime_config_final_status == 'done' and artifacts_errored )
+    or ( validate_feature_files_final_status == 'done' and validation_errored )
+    or ( generate_constrained_random_tests_status == 'done' and generation_errored )
   ):
     setup_errored = True
   else:
@@ -304,6 +312,53 @@ action buttons:
     action: do_restart
     icon: undo
     color: warning
+---
+need:
+  - action_button_html
+code: |
+  def download_file_button( url ):
+    return f"""
+      <div class="download">
+      <a class="btn btn-secondary download_button" title="Download file" type="button" target="_blank" href="{ url }"><i class="fas fa-download"></i></a>
+      </div>
+    """
+---
+need:
+  - jump_button
+code: |
+  # Discuss: parameter names aren't quite right
+  def to_section_bottom_button( parent_prefix, jump_down_prefix ):
+    return jump_button(
+      f"{ parent_prefix }_down_jumper",
+      f"{ jump_down_prefix }_bottom",
+      "down"
+    )
+---
+need:
+  - jump_button
+code: |
+  # Discuss: parameter names aren't quite right
+  def to_section_top_button( self_prefix, jump_up_id ):
+    return jump_button(
+      f"{ self_prefix }_bottom",
+      f"{ jump_up_id }",
+      "up"
+    )
+---
+need:
+  - action_button_html
+code: |
+  # Discuss: Is this abstraction worth it anymore?
+  # Discuss: parameter names aren't quite right
+  def jump_button( self_id, jump_id, direction ):
+    where = "bottom"
+    if direction == "up":
+      where = "top"
+    return f"""
+      <div class="jump jump_{ direction }">
+        <a id="{ self_id }" title="Go to the { where } of the section" class="btn btn-secondary" type="button" href="#{ jump_id }"><i class="fas fa-arrows-{ direction }-to-line"></i></a>
+      </div>
+    """
 ---
 # new TODO: Move all the npm_connection stuff into one section
 # new TODO: (For the future) Don't need `if` around news request I think. Double check.
@@ -1084,6 +1139,7 @@ need:
  - zip_name_no_ext
  - zip_name
  - get_file_html
+ - get_generated_Scenarios_section
 code: |
   import os
   import subprocess
@@ -1159,6 +1215,12 @@ code: |
 
     # ====== "Root" level directories ======
     top_dirs.sort(key=lambda dir: dir.name)
+  
+    # ====== Add all generated tests ======
+    # There should be only one directory, but this looks clean
+    generation_dirs = [ dir for dir in top_dirs if '_alkiln_generated' in dir.name ]
+    for dir in generation_dirs:
+      html += get_generated_Scenarios_section( dir )
   
     # ====== "Root" level files section ======
     html += '<div class="section quick_view">\n'
@@ -1245,6 +1307,9 @@ code: |
     
     # For each Scenario
     for dir in top_dirs:
+
+      if '_alkiln_generated' in dir.name:
+        continue
   
       html += '<div class="output card card-body scenario">\n'
       html += f'<h3>Scenario: {dir.name}</h3>\n'
@@ -1304,6 +1369,163 @@ code: |
     
     return { "html": html, "outcome": test_run_outcome }
 ---
+id: html section for generated randomized Scenarios
+# Discuss: Make accordion close button jump to top of accordion
+need:
+  - get_feature_html
+code: |
+  import os
+  import shutil
+  import json
+  
+  def get_generated_Scenarios_section( dir ):
+    """
+    Return the html for 2. an expandable element with the list of
+        generated files to open in the browser and 1. A zip of all
+        those files. Or return an apology.
+
+    Note: I keep running into errors when trying to zip this dir
+      I thougth these would be in root artifacts zip, but
+      for some reason they aren't
+    """
+
+    # html = '<div class="section generated">\n'
+    # html += '<h2>New randomized `.feature` files</h2>\n'
+    # html += '<div class="output card card-body generated">\n'
+    html = f"""
+    <div class="section generated">
+      <h2>New randomized <code>.feature</code> files</h2>
+      <div class="accordion output generated">
+    """
+
+    # Will the ALKiln times and counter be unique enough? Probably.
+    # If we generate files in parallel we'll have to check again.
+    for root_path, dir_names, file_names in os.walk(f'{dir.path}'):
+      file_names.sort()
+      for file_name in file_names:
+        _debug(f'root_path, dir_names, file_name: {[root_path, dir_names, file_name]}')
+        path = os.path.abspath(os.path.join(root_path, file_name))
+        html += get_feature_html( path, file_name )
+  
+    html += "</div>\n"  # ends generated card
+    html += "</div>\n"  # ends generated section
+
+    return html
+---
+id: feature files html
+need:
+  - very_safe_name
+  - copier
+  - download_file_button
+code: |
+  import os
+  
+  def get_feature_html( path, file_name ):
+    _debug( f'`path`: { path }', "console")
+
+    safe_name = very_safe_name( file_name )
+
+    da_file = DAFile()
+    da_file.initialize(filename=f'{ safe_name }')
+    da_file.copy_into( path )
+    da_file.commit()
+
+    _debug( f'get_feature_html file url: { da_file.url_for() }; path: { da_file.path() }', "console")
+
+    download_button = download_file_button( da_file.url_for() )
+
+    html = f"""
+    <div class="accordion-item feature_file alkiln_copy">
+      <div class="accordion-header sticky_scroll" id="{ safe_name }_header">
+        <div class="alk_grid">
+          <button class="alk_col file_name accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#{ safe_name }" aria-expanded="false" aria-controls="{ safe_name }">
+            { file_name }
+          </button>
+          <div class="alk_col file_buttons">
+            { download_button }
+            { copier }
+          </div>
+        </div>
+      </div>
+      <div id="{ safe_name }" class="accordion-collapse collapse" aria-labelledby="{ safe_name }">
+        <pre class="accordion-body visible_text">{ da_file.slurp(auto_decode=False).decode("utf-8") }</pre>
+      </div>
+    </div>
+    """
+
+    return html
+---
+id: console text html
+need:
+  - very_safe_name
+  - copier
+  - download_file_button
+  - console_full_text
+  - to_section_bottom_button
+  - to_section_top_button
+code: |
+  import os
+  
+  def get_console_html( artifacts_name ):
+
+    safe_name = very_safe_name( artifacts_name )
+
+    da_file = DAFile()
+    da_file.initialize(filename=f'{ safe_name }_debug_log', extension="txt")
+    da_file.write( console_full_text.content )
+    da_file.commit()
+
+    _debug( f'get_console_html file url: { da_file.url_for() }; path: { da_file.path() }', "console")
+
+    jump_id = "console_jump"
+    to_bottom_button = to_section_bottom_button( jump_id, jump_id )
+    download_button = download_file_button( da_file.url_for() )
+    to_top_button = to_section_top_button( jump_id, jump_id )
+
+    html = f"""
+    <div class="console_output">
+      <div id="console" class="section">
+        <div id="{ jump_id }" class="jump_destination"></div>
+        <h2 id="console_heading">ALKiln console logs</h2>
+
+        <div class="alkiln_copy">
+          <div class="alk_grid sticky_scroll">
+            <div class="alk_col file_buttons" id="{ safe_name }_console">
+              { to_bottom_button }
+              { download_button }
+              { copier }
+            </div>
+          </div>
+          { console_full_text }
+          { to_top_button }
+        </div>
+        
+      </div>
+    </div>
+    """
+
+    return html
+---
+# TODO: Move the headings (datetime, "Test run:", etc. to ALKiln)
+id: console output for console func
+need:
+  - setup_output_for_the_console
+  - test_run_output_for_console
+template: console_full_text
+content: |
+  % if setup_output_for_the_console or test_run_output_for_console:
+  
+  <pre class="visible_text">ALKiln setup and test run console output - ${ format_date(today(), format='E, MMM dd yyyy') } ${ format_time(current_datetime(), format='hh:mm:ss a z') }
+  
+  % if setup_output_for_the_console:
+  ${ setup_output_for_the_console }
+  
+  %endif
+  Test run:
+  ${ test_run_output_for_console }</pre>
+  % endif
+
+---
 id: non-feature files
 code: |
   def get_file_html(name='', path=''):
@@ -1326,6 +1548,24 @@ code: |
       html += f'</li>\n'
     
     return html
+---
+id: html elements to copy to clipboard
+code: |
+  copier = """
+  <div class="copy_functionality">
+    <!-- Can't control textarea styles, esp word-wrap -->
+    <textarea readonly aria-hidden="true" class="to_copy"></textarea>
+  
+    <button class="btn btn-secondary copy_button" type="button">
+      <i class="far fa-copy"></i>
+      <div class="statuses">
+        <span class="copy_default">Copy</span>
+        <span class="copy_done">Copied!</span>
+        <span class="copy_cancelled">Cancelled copy</span>
+      </div>
+    </button>
+  </div>
+  """
 ---
 # new TODO: Delete `need`s except `folder_path`
 # new TODO: Move to files helper section
@@ -1398,7 +1638,7 @@ subquestion: |
   
   </div>
 
-  % if artifacts_errored:
+  % if artifacts_errored or validation_errored or generation_errored:
   ${ setup_error_html }
   % endif
   
@@ -1434,37 +1674,49 @@ code: |
   test_run_outcome = None
 ---
 need:
+  - setup_output_for_the_console
+  - test_run_output_for_console
   - folder_name
+  - get_console_html
 template: test_output_template
 content: |
-  <div class="console_output">
-  <div class="section">
-  <h2 id="console">Console output</h2>
-  <pre>Temp console content during transition to ravioli</pre>
-  </div>
-  </div>
-comment: |
-  <div class="console_output">
-  <div class="section">
-  <h2 id="console">Console output</h2>
-  <pre><code>
-  % if no_output or test_run_output.get() is None or test_run_output.get() == 'None':
-  No console output
+  ${ get_console_html( folder_name ) }
+---
+# new TODO: Get rid of extra whitespace
+template: setup_output_for_the_console
+content: |
+  % if defined('setup_outputs') and len(setup_outputs) > 0:
+  Artifacts folder, validation, and randomized test generation:
+  % for setup_output in setup_outputs:
+  ${ setup_output }
+  % endfor
+
+  
+  % endif
+---
+template: test_run_output_for_console
+content: |
+  % if not defined('test_run_output'):
+  Tests did not run. More information should be above.
+  Your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log">worker.log</a> might have more information.
+  
+  If not, please get in touch with the ALKiln developers.
+  % elif test_run_output.get() is None or test_run_output.get() == 'None':
+  There is no console output for the tests that ran.
   
   Your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log">worker.log</a> might have more information.
   % else:
   ${ test_run_output.get() }
   % endif
-  </code></pre>
-  </div>
-  </div>
 ---
+# new TODO: "Invalid random constrained tests" -> "Invalid constrained randomized tests"
 template: setup_error_html
 content: |
   <div class="setup_error alert alert-danger">
   <p>Test setup errored. Here are examples of why this can happen:</p>
   <ul>
   <li>Invalid ".feature" files</li>
+  <li>Invalid random constrained tests ".feature" files</li>
   <li>An internal ALKiln error.</li>
   </ul>
   </br>
