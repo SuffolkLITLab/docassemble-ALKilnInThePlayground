@@ -1,0 +1,107 @@
+---
+# Sticky header
+---
+id: sticky header
+code: |
+  def sticky_h2_header( headerer ):
+    return f"""
+      <header id="{ headerer.id }_header" class="sticky_scroll">
+        <h2 class="description">
+          <div>{ headerer.heading }</div>
+        </h2>
+        <div class="functional_buttons_container">
+          { headerer.attr("nav") or "" }
+          { headerer.attr("menu") or "" }
+        </div>
+      </header>"""
+---
+# Sticky accordion header
+---
+# id: sticky accordion
+# generic object: DAObject
+# template: x.sticky_accordion_header
+# content: |
+#   ...
+---
+# Needs flexible heading level
+id: sticky accordion
+code: |
+  def sticky_accordion_header( accorder ):
+    return f"""
+      <header id="{ accorder.id }_header" class="accordion-header sticky_scroll">
+        <h3 class="description">
+          <button class="file_name accordion-button collapsed" type="button" data-bs-target="#{ accorder.id }" aria-controls="{ accorder.id }" data-bs-toggle="collapse" aria-expanded="false">
+            { accorder.heading } 
+          </button>
+        </h3>
+        <div class="functional_buttons_container">
+          { accorder.attr("nav") or "" }
+          { accorder.attr("menu") or "" }
+        </div>
+      </header>"""
+---
+# Example of possible future non-function integration
+comment: |
+  { "" if import os else "" }
+  
+  feature = sections[ sections.number_gathered() ]
+
+  feature.heading = file_name
+
+  feature.id = very_safe_name( file_name )
+
+  feature.da_file = DAFile()
+  # ...populate and save file
+  
+  feature.download = download_file_button( feature.da_file.url_for() )
+  feature.copier
+  feature.menu = feature.menu_download_n_copy
+
+  feature.html = f"""
+  <div class="accordion-item feature_file alkiln_copy">
+    { feature.sticky_accordion_header }
+    { featuer.accordian_content }
+  </div>
+  """
+---
+# Header parts
+---
+# id: menu for download and copy
+# generic object: DAObject
+# template: x.menu_download_n_copy
+# content: |
+#   ...
+---
+id: menu for maybe downloads and maybe copying
+code: |
+  def menu_download_n_copy( menuer ):
+    """
+    Return the html for a menu element containing the download and copy buttons.
+
+    Note: I use properties here instead of arguements as preparation for
+        removing functions from the codebase
+    """
+    return f"""<menu>
+      { menuer.attr("zip") or "" }{ menuer.attr("download") or "" }{ menuer.attr("copier") or "" }
+    </menu>"""
+---
+id: copier functionality abstracted
+generic object: DAObject
+template: x.copier
+content: |
+  <div class="copy_functionality">
+  
+    <!-- Can't control textarea styles, esp word-wrap, so invisible -->
+    <textarea readonly aria-hidden="true" class="to_copy"></textarea>
+  
+    <button class="btn btn-secondary copy_button" type="button">
+      <i class="far fa-copy"></i>
+      <div class="statuses">
+        <span class="copy_default">Copy</span>
+        <span class="copy_done">Copied!</span>
+        <span class="copy_cancelled">Cancelled copy</span>
+      </div>
+    </button>
+  
+  </div>
+---

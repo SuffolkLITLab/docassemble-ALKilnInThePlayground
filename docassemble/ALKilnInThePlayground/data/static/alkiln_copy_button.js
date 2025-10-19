@@ -29,34 +29,23 @@ async function add_copy_event_listeners( node ) {
   button.addEventListener( `click`, async function ( event ) {
     try {
 
-      console.log(1)
       let visible_text = visible.textContent;
       // Must be a textarea
       to_copy_from.innerHTML = visible_text;
-      console.log( to_copy_from.innerHTML )
       
       $(to_copy_from).focus();
       $(to_copy_from).select();
       let text = to_copy_from.textContent;
       await navigator.clipboard.writeText(text);
-      console.log(2)
 
-      console.log()
       show_status({ statuses, to_show: status_copied });
-      
       $(to_copy_from).blur();
-      console.log(3)
-      
       show_status({ statuses, to_show: status_copied });
 
     } catch ( error ) {
-      console.log(4)
       $(to_copy_from).blur();
-      
-      console.log(5)
       show_status({ statuses, to_show: status_cancelled_copy });
       
-      console.log(6)
       console.warn( 'Error in ALKiln copy button click' );
       console.warn( JSON.stringify( error ));
       // throw(error);
@@ -69,7 +58,6 @@ async function add_copy_event_listeners( node ) {
         
       show_status({ statuses, to_show: status_default });
       }
-      console.log('blur/mouseleave', event.target)
     } catch ( error ) {
       console.warn( 'Error in ALKiln copy button mouseleave' );
       console.warn( error );
