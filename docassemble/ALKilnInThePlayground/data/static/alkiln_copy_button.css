@@ -1,56 +1,32 @@
 .accordion {
-  note: "Keeps the curved border even when children have their own backgrounds";
+  note: "Keeps the curved border even when children have their own backgrounds. Discuss: Should these styles be in the main css file?";
   contain: paint;
 }
-.accordion.output.generated {
-  note: "Generated output outer background and border styles";
-  border-radius: var(--bs-accordion-border-radius);
+.accordion {
+  note: "Accordion outer background and border styles";
+  border-radius: var(--bs-border-radius);
 }
 .generated .alkiln_copy {
-  background-color: var(--bs-accordion-active-bg);
   border: none;
 }
 .alkiln_copy .accordion-button:focus,
 .alkiln_copy .accordion-button:not(.collapsed) {
   box-shadow: none;
 }
-.alkiln_copy .accordion-header .row,
-.accordion-header .row {
-  margin: initial;
+.accordion-header:has(h3) {
+  padding-top: .2em;
+  padding-bottom: .2em;
+}
+.accordion-header .row:has(h3) {
+  margin-left: initial;
 }
 
 note {
   note: "Copy button and other relevant elements container. Discuss: Other sections having sticky headings.";
 }
-.alkiln_copy .sticky_scroll {
-  position: sticky;
-  z-index: 1;
-  note: "Puts this element below the nav bar to keep it visible. I'm not sure where that navbar padding is set. I haven't found it on GitHub. Element .da-pad-for-navbar sets the padding for the spacer that keeps the nav bar from covering the rest of the page.";
-  top: var(--nav-bar-height);
-}
 #console .alkiln_copy .sticky_scroll {
-  note: "Puts this element below the nav bar to keep it visible (it's got a transform pushing it up next to the heading, so it needs extra. Discuss: put heading and copy buttons in the same element). I'm not sure where that navbar padding is set. I haven't found it on GitHub. Element .da-pad-for-navbar";
-  top: calc( var(--nav-bar-height) + 2.75em);
-}
-
-.alkiln_copy .alk_grid {
-  display: grid;
-  gap: .4em;
-  note: "Ensure the combined width of all .alk_col:last-child items is the same in each grid of this type. Otherwise this sizing may look to wide or too thin, hiding other items in the column.";
-  grid-template-columns: 1fr max-content;
-  padding-top: .2em;
-  padding-bottom: .2em;
-  padding-right: .2em;
-}
-
-
-.alkiln_copy .alk_col {
-  font-size: .9em;
-  padding: 0;
-}
-
-.alk_col:last-child {
-  text-align: right;
+  note: "Puts this element below the nav bar to keep it visible (it's got a transform pushing it up next to the heading, so it needs extra. I'm not sure where that navbar padding is set. I haven't found it on GitHub. Element .da-pad-for-navbar";
+  top: calc( var(--detected-nav-bar-height) + 2.75em);
 }
 
 notes {
@@ -59,11 +35,11 @@ notes {
 .alkiln_copy .accordion-button::after,
 .accordion-button::after {
   position: absolute;
-  left: 1em;
+  left: 0;
 }
-.alkiln_copy .accordion-button,
 .accordion-button {
-  padding-left: 3em;
+  padding: 0;
+  padding-left: 2em;
 }
 
 .alkiln_copy {
@@ -81,7 +57,7 @@ parkinglot {
 }
 
 #daform .alkiln_copy .accordion-body.visible_text {
-  background: #d9d9d9;
+  background: var(--serious-bg);
   note: "mask-image: linear-gradient(180deg, rgb(0, 0, 0) 90%, transparent 100%);";
 }
 
@@ -108,35 +84,15 @@ parkinglot {
   word-wrap: anywhere;
 }
 
-.alkiln_copy .file_buttons > * {
+.alkiln_copy .functional_buttons > * {
   display: inline-block;
   note: "Font size might keep them on the same line";
-}
-
-.alkiln_copy .alk_col > *,
-.alkiln_copy .alk_col .download_button,
-.alkiln_copy .alk_col .copy_button,
-.alkiln_copy .jump_down {
-  height: 100%;
 }
 
 .alkiln_copy .accordion-button {
   background: inherit;
 }
 
-
-
 copy_button_css_notes {
   note: "Below are rules for specific copy buttons/copy button containers";
-}
-
-#console .alkiln_copy {
-  transform: translatey(-2.5em);
-}
-#console .alk_grid {
-  neutralized: "position: absolute;";
-  neutralized: "transform: translatey(-100%);";
-  right: 0;
-  gap: 0em;
-  padding-right: 0;
 }

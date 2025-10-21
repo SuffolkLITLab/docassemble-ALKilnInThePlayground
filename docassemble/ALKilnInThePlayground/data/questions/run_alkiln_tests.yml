@@ -1,5 +1,7 @@
-# new TODO: Clean up logs
-# new TODO: Add log codes
+# TODO: When offline, skip the install ALKiln page (except when they have no ALKiln installed). Leave button on other pages to install another version, but pressing that button should somehow show the user that they can't install a different ALKiln version when they're offline.
+# TODO: In "current interviews" page, clarify the nature of the specific test run. Use `set_parts()` to set the interview title based on the project that was tested and subtitle based on the date and time
+# TODO: Clean up logs
+# TODO: Add log codes
 # TODO: Reduce number of functions into plain blocks or events. Incidentally, that will allow avoiding the complex return value for getting the html.
 # TODO: Add codes to log messages. Add a "verbose" flag?
 # TODO: It's unclear that the purpose of the link below a file is to download the file.
@@ -9,7 +11,7 @@
 # TODO: Guard function calls for functions that are only used once with a flag. That will help us find where undefined variables are causing functions to be run repeatedly.
 # TODO: There is a box shadow above accordion items that hides the gap between the accordion item and the header above it. That's slow. Instead, use a new element created just for that purpose.
 # TODO: Clean up unused code, add doc strings
-# TODO: Replaste `log` with `_log` or `_debug`
+# TODO: Replace `log` with `_log` or `_debug`
 # TODO: Add more ids, including for code blocks
 # Research: exactly how do ids on code blocks affect the cache
 
@@ -29,6 +31,7 @@ include:
   - artifacts.yml
   - validate.yml
   - generate.yml
+  - headers.yml
 ---
 features:
   css:
@@ -38,6 +41,7 @@ features:
     - alkiln_notifications.js
     - alkiln_copy_button.js
     - nav_bar_based_css.js
+    - accordion_collapse_nav.js
 ---
 mandatory: True
 id: interview order
@@ -340,7 +344,6 @@ question: |
   Unable to install ALKiln
 subquestion: |
   <div class="alert alert-danger">
-  Unfortunately, ALKilnInThePlayground is unable to install ALKiln right now. ${ npm_connection_msg }
   Unfortunately ALKilnInThePlayground is unable to install ALKiln right now. ${ npm_connection_msg }
   </div>
 
@@ -352,53 +355,6 @@ action buttons:
     action: do_new
     icon: undo
     color: warning
----
-need:
-  - action_button_html
-code: |
-  def download_file_button( url ):
-    return f"""
-      <div class="download">
-      <a class="btn btn-secondary download_button" title="Download file" type="button" target="_blank" href="{ url }"><i class="fas fa-download"></i></a>
-      </div>
-    """
----
-need:
-  - jump_button
-code: |
-  # Discuss: parameter names aren't quite right
-  def to_section_bottom_button( parent_prefix, jump_down_prefix ):
-    return jump_button(
-      f"{ parent_prefix }_down_jumper",
-      f"{ jump_down_prefix }_bottom",
-      "down"
-    )
----
-need:
-  - jump_button
-code: |
-  # Discuss: parameter names aren't quite right
-  def to_section_top_button( self_prefix, jump_up_id ):
-    return jump_button(
-      f"{ self_prefix }_bottom",
-      f"{ jump_up_id }",
-      "up"
-    )
----
-need:
-  - action_button_html
-code: |
-  # Discuss: Is this abstraction worth it anymore?
-  # Discuss: parameter names aren't quite right
-  def jump_button( self_id, jump_id, direction ):
-    where = "bottom"
-    if direction == "up":
-      where = "top"
-    return f"""
-      <div class="jump jump_{ direction }">
-        <a id="{ self_id }" title="Go to the { where } of the section" class="btn btn-secondary" type="button" href="#{ jump_id }"><i class="fas fa-arrows-{ direction }-to-line"></i></a>
-      </div>
-    """
 ---
 # TODO: (For the future) Don't need `if` around news request I think. Double check.
 # Discuss: Add explicit refresh button
@@ -527,7 +483,7 @@ code: |
 
     return connection_msg
 ---
-# new TODO: Should `if matches == None:` be an error path?
+# Discuss: Should `if matches == None:` be an error path?
 need:
   - da_log_more_info
 code: |
@@ -1242,6 +1198,9 @@ need:
  - get_generated_Scenarios_section
  - da_log_more_info
  - logs_more_info
+ - no_tests_instructions
+ - get_quick_view_header
+ - get_scenarios_header
 code: |
   import os
   import subprocess
@@ -1297,14 +1256,16 @@ code: |
       zip_da_file.commit()
     
       html += f"""
-        <div>{ action_button_html(zip_da_file.url_for(), label="Download all files and folders ALKiln created", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }</div>
-  
-        <div class="to_console">
-          <a href="#console" markdown="1" class="btn btn-secondary" type="button">:arrows-down-to-line: Jump down to the full console logs</a>
+        <div class="quick_buttons top">
+          <menu>{ action_button_html(zip_da_file.url_for(), label="Download all files and folders ALKiln created", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }</menu>
+    
+          <nav class="to_console_logs_from_top">
+            <a class="non_da_internal_link btn btn-secondary" href="#console" markdown="1" type="button">:arrows-down-to-line: Jump down to the full console logs</a>
+          </nav>
         </div>
       """
   
-    html += '</div>\n'  # ends zip section
+    html += '</section>\n'  # ends zip section
     
     # collect top-level names and paths.
     top_dirs = []
@@ -1331,10 +1292,13 @@ code: |
       html += get_generated_Scenarios_section( dir )
   
     # ====== "Root" level files section ======
-    html += '<div class="section quick_view">\n'
-    html += '<h2>Quick view</h2>\n'
-    html += '<aside>Reports, error screenshots, etc.</aside>\n'
-    html += '<div class="output card card-body">\n'
+  
+    html += f"""
+      <section id="quick_view" class="section quick_view">
+        { get_quick_view_header() }
+        <aside>Top-level reports, error screenshots, etc.</aside>
+        <div class="output card card-body">
+        """
 
     # Show files that are for the all the tests combined
     # This includes error screenshots
@@ -1388,32 +1352,18 @@ code: |
           </ul>
           """
     else:
-      html += f"""
-        <div class="no_output">
-          <p>ALKiln found no summary files (like report.txt). Maybe no tests ran. Some questions to ask:</p>
-          <ul>
-            <li>Does the console output show that the tests ran "0 scenarios"? If so:</li>
-            <ul>
-              <li>Does your Sources folder contain files ending in ".feature"?</li>
-              <li>Does <a href="#report">the console output at the bottom of this page</a> show that ALKiln ran into an error before it could run any of your tests?</li>
-            # <li>If you used a <a href="https://assemblyline.suffolklitlab.org/docs/components/ALKiln/writing/#tags:~:text=Tag%20expression-,What%20tests%20run%3F,-%40likes_bears">tag expression</a>, do you have a typo in your tag expression?</li>
-            </ul>
-            <li>Does <a href="#report">the console output at the bottom of this page</a> show that ALKiln ran into an error before it could run any of your tests?</li>
-            <li>{ logs_more_info }</li>
-          </ul>
-        </div>
-        """
+      html += str( no_tests_instructions )
     
     # End summary files items
     html += '</div>\n'
     # End summary files section
-    html += '</div>\n'
+    html += '</section>\n'
 
     # ====== Nested dirs output ======
   
     # ====== Start all Scenarios ======
-    html += '<div class="section scenarios">\n'
-    html += '<h2>Scenarios</h2>\n'
+    html += '<section class="section scenarios">\n'
+    html += get_scenarios_header()
     
     # For each Scenario
     for dir in top_dirs:
@@ -1475,14 +1425,42 @@ code: |
       html += '</div>\n'
       
     # End all Scenarios
-    html += '</div>\n'
+    html += '</section>\n'
     
     return { "html": html, "outcome": test_run_outcome }
+---
+id: no tests instructions
+template: no_tests_instructions
+content: |
+  <div class="no_output">
+    <p>ALKiln found no summary files (like report.txt). Maybe no tests ran. Here are some questions that might help find the problem.</p>
+    <p>Does <a class="non_da_internal_link" href="#console">the console output at the bottom of this page</a> show that the tests ran "0 scenarios"? If so:</p>
+    <ul>
+      <li>Does <a class="non_da_internal_link" href="#console">that console output</a> show that ALKiln ran into an error before it could run any of your tests? If so, read those error messages and any in your logs.</li>
+      <li>Does your Sources folder contain files ending in ".feature"? If not, your package has no tests to run.</li>
+      <li>Look at <a class="non_da_internal_link" href="#metadata">the top of this page at the value of "Tag expression"</a>.
+        <ul>
+          <li>Do you have a typo in your tag expression?</li>
+          <li>Does your tag expression have <a href="https://assemblyline.suffolklitlab.org/docs/components/ALKiln/writing/#tags:~:text=2%20and%203-,not%20%40wild_bear,-All%20tests%20in">the word `not` in it</a>? That tells ALKiln to skip some tests.</li>
+          <li>Does your <a target="_blank" href="${url_of('root', _external=True)}/config">your docassemble server config</a> set <a href="https://assemblyline.suffolklitlab.org/docs/components/ALKiln/writing/#github-optional-inputs:~:text=ALKILN_TAG_EXPRESSION%20is%20the%20%22tag%20expression%22%20to%20use%20to%20limit%20which%20tests%20to%20run">the ALKiln environment variable <code>ALKILN_TAG_EXPRESSION</code></a>? If you need to override it you can write a new one in the tag expression field just before you run these tests.</li>
+        </ul>
+      </li>
+    </ul>
+    <p>${ logs_more_info }</p>
+  </div>
+---
+# We plan to remove functions. This is part of the preparation.
+objects:
+  - sections: DAList.using( object_type=DAObject, complete_attribute="header" )
 ---
 id: html section for generated randomized Scenarios
 # Discuss: Make accordion close button jump to top of accordion
 need:
   - get_feature_html
+  - menu_download_n_copy
+  - sticky_h2_header
+  - root_path
+  - sections
 code: |
   import os
   import shutil
@@ -1493,17 +1471,19 @@ code: |
     Return the html for an expandable element with the list of
         generated files to open in the browser or return an apology.
     """
+    gen = sections[ sections.number_gathered() ]
 
-    # html = '<div class="section generated">\n'
-    # html += '<h2>New randomized `.feature` files</h2>\n'
-    # html += '<div class="output card card-body generated">\n'
+    # Discuss: Add "expand all" button?
+    gen.heading = "New randomized tests"
+    gen.id = "generated_scenarios"
+  
     html = f"""
-    <div class="section generated">
-      <h2>New randomized <code>.feature</code> files</h2>
+    <section id="generated" class="section generated">
+      { sticky_h2_header( gen ) }
       <div class="accordion output generated">
     """
 
-    # Will the ALKiln times and counter be unique enough? Probably.
+    # Will the ALKiln timestamps and counter be unique enough? Probably.
     # If we generate files in parallel we'll have to check again.
     for gen_root_path, dir_names, file_names in os.walk(f'{dir.path}'):
       file_names.sort()
@@ -1512,53 +1492,133 @@ code: |
         path = os.path.abspath(os.path.join(gen_root_path, file_name))
         html += get_feature_html( path, file_name )
   
-    html += "</div>\n"  # ends generated card
-    html += "</div>\n"  # ends generated section
+    html += "</div>\n"  # ends generated accordions
+    html += "</section>\n"  # ends generated section
 
     return html
+---
+comment: |
+    # Discuss: Is the "generated files" zip file worth the trouble?
+  
+    gen.safe_name = very_safe_name( folder_name )
+    gen.zip_name = f"{ gen.safe_name }_scenarios_generated_by_alkiln.zip"
+    gen.zip_pre_path = f"{ root_path }/{ gen.zip_name }"
+    
+    _debug(f'💡 ALKP0050 ALKiln will get all the generated tests at "{ folder_path }", zip them, and try to save that zip at "{ gen.zip_pre_path }"' )
+    _debug(f"""gen zip_process = subprocess.run(['zip', '-rv', { gen.zip_pre_path }, '*' ], cwd={ folder_path }, check=False, capture_output=True)""" )
+
+    # Discuss: Folder for all tmp files would be more conceptually clear
+    # f"{ very safe name }_tmp"
+    # But this will make code more complex
+  
+    zip_process = subprocess.run([
+        # If we add a timestamp to _alkiln_generated, we can use `ls` (with a
+        # wildcard?) to get the actual name of the file. (Since we can't figure
+        # out how to use a wildcard with `zip`)
+        'zip', '-rv', gen.zip_pre_path, './_alkiln_generated'
+      ],
+      cwd=folder_path, check=False, capture_output=True
+    )
+
+    if zip_process.stdout:
+      _debug('💡 ALKiP NOTE ALKP0052: zipped the generated scenarios folder. stdout:')
+      _debug( zip_process.stdout )
+
+    zip_data = get_any_zip_path( gen.zip_pre_path )
+    gen.zip_path = zip_data["path"]
+    _debug(f'gen.zip_path: { gen.zip_path }')
+
+    # Folder path was fine, but unable to make zip
+    if zip_process.returncode != 0 or zip_data["problem"] != "":
+      _log( f'■■■ ALKiP Error ALKP0053: error zipping generated scenarios at "{ folder_path }" to { gen.zip_path }:' )
+  
+    if zip_process.returncode != 0:
+      _log( zip_process.stderr.decode("utf-8") )
+    elif zip_data["problem"] != "":
+      _log( zip_data["problem"] )
+  
+    else:
+      _debug(f"""ALKP0054 ALKiln saved the generated scenarios zip file correctly to "{ gen.zip_path }"\n gen.da_zip.initialize( filename={ gen.zip_name } )\ngen.da_zip.copy_into( { gen.zip_path } )""")
+      gen.da_zip = DAFile()
+      gen.da_zip.initialize( filename=gen.zip_name )
+      gen.da_zip.copy_into( gen.zip_path )
+      gen.da_zip.commit()
+
+      gen.download = download_zip_button( gen.da_zip.url_for() )
+      gen.menu = menu_download_n_copy( gen )
+---
+id: html header for root-level files
+need:
+  - sticky_h2_header
+  - sections
+code: |
+  def get_quick_view_header():
+    """
+    Return the html for the header of the "root" level files section.
+    """
+    quick = sections[ sections.number_gathered() ]
+    quick.heading = "Results quick view"
+    quick.id = "quick_view_header"
+    return sticky_h2_header( quick )
+---
+id: html header for ouputs of Scenarios
+need:
+  - sticky_h2_header
+  - sections
+code: |
+  def get_scenarios_header():
+    """
+    Return the html for the header of the Scenarios outputs section.
+    """
+    scenarios = sections[ sections.number_gathered() ]
+    scenarios.heading = "Scenarios"
+    scenarios.id = "scenarios_header"
+    return sticky_h2_header( scenarios )
 ---
 id: feature files html
 need:
   - very_safe_name
   - copier
   - download_file_button
+  - menu_download_n_copy
+  - sticky_accordion_header
+  - accordion_content_for_file
 code: |
   import os
   
   def get_feature_html( path, file_name ):
-    _debug( f'`path`: { path }', "console")
+    """
+    Note: Code style is based on a future goal to remove functions
+    """
+  
+    feat = sections[ sections.number_gathered() ]
+    feat.heading = file_name
+    feat.id = very_safe_name( file_name )
 
-    safe_name = very_safe_name( file_name )
+    feat.da_file = DAFile()
+    feat.da_file.initialize( filename=f"{ feat.id }.feature" )
+    feat.da_file.copy_into( path )
+    feat.da_file.commit()
 
-    da_file = DAFile()
-    da_file.initialize(filename=f'{ safe_name }')
-    da_file.copy_into( path )
-    da_file.commit()
-
-    _debug( f'get_feature_html file url: { da_file.url_for() }; path: { da_file.path() }', "console")
-
-    download_button = download_file_button( da_file.url_for() )
-
+    feat.download = download_file_button( feat.da_file.url_for() )
+    feat.copier = copier
+    feat.menu = menu_download_n_copy( feat )
+  
     html = f"""
-    <div class="accordion-item feature_file alkiln_copy">
-      <div class="accordion-header sticky_scroll" id="{ safe_name }_header">
-        <div class="alk_grid">
-          <button class="alk_col file_name accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#{ safe_name }" aria-expanded="false" aria-controls="{ safe_name }">
-            { file_name }
-          </button>
-          <div class="alk_col file_buttons">
-            { download_button }
-            { copier }
-          </div>
-        </div>
-      </div>
-      <div id="{ safe_name }" class="accordion-collapse collapse" aria-labelledby="{ safe_name }">
-        <pre class="accordion-body visible_text">{ da_file.slurp(auto_decode=False).decode("utf-8") }</pre>
-      </div>
-    </div>
+    <section class="accordion-item feature_files alkiln_copy">
+      { sticky_accordion_header( feat ) }
+      { accordion_content_for_file( feat ) }
+    </section>
     """
 
     return html
+---
+id: accordion content for a file
+code: |
+  def accordion_content_for_file( accorder ):
+    return f"""<div id="{ accorder.id }" class="accordion-collapse collapse" aria-labelledby="{ accorder.id }">
+      <pre class="accordion-body visible_text">{ accorder.da_file.slurp(auto_decode=False).decode("utf-8") }</pre>
+    </div>"""
 ---
 id: console text html
 need:
@@ -1576,36 +1636,32 @@ code: |
     safe_name = very_safe_name( artifacts_name )
 
     da_file = DAFile()
-    da_file.initialize(filename=f'{ safe_name }_debug_log', extension="txt")
+    da_file.initialize(filename=f'{ safe_name }_debug_log.txt')
     da_file.write( console_full_text.content )
     da_file.commit()
 
-    _debug( f'get_console_html file url: { da_file.url_for() }; path: { da_file.path() }', "console")
-
-    jump_id = "console_jump"
-    to_bottom_button = to_section_bottom_button( jump_id, jump_id )
-    download_button = download_file_button( da_file.url_for() )
-    to_top_button = to_section_top_button( jump_id, jump_id )
+    console = sections[ sections.number_gathered() ]
+    console.heading = "ALKiln console logs"
+    console.id = "console_heading"
+  
+    console.download = download_file_button( da_file.url_for() )
+    console.copier = copier
+    console.menu = menu_download_n_copy( console )
+  
+    # Avoid abstracting navigation arrangement. Too coupled; jump functionality
+    # is in the header, but also spread around the edges of the section.
+    console.jump_id = "console_jump"
+    console.nav = to_section_bottom_button( console.jump_id )
+    console.to_top = to_section_top_button( console.jump_id )
 
     html = f"""
     <div class="console_output">
-      <div id="console" class="section">
-        <div id="{ jump_id }" class="jump_destination"></div>
-        <h2 id="console_heading">ALKiln console logs</h2>
-
-        <div class="alkiln_copy">
-          <div class="alk_grid sticky_scroll">
-            <div class="alk_col file_buttons" id="{ safe_name }_console">
-              { to_bottom_button }
-              { download_button }
-              { copier }
-            </div>
-          </div>
-          { console_full_text }
-          { to_top_button }
-        </div>
-        
-      </div>
+      <section id="console" class="section alkiln_copy">
+        <div id="{ console.jump_id }" class="jump_destination"></div>
+        { sticky_h2_header( console ) }
+        <pre class="visible_text">{ str( console_full_text ).strip() }</pre>
+        { console.to_top }
+      </section>
     </div>
     """
 
@@ -1619,15 +1675,14 @@ need:
 template: console_full_text
 content: |
   % if setup_output_for_the_console or test_run_output_for_console:
-  
-  <pre class="visible_text">ALKiln setup and test run console output - ${ format_date(today(), format='E, MMM dd yyyy') } ${ format_time(current_datetime(), format='hh:mm:ss a z') }
+  ALKiln setup and test run console output - ${ format_date(today(), format='E, dd MMM yyyy') } ${ format_time(current_datetime(), format='hh:mm:ss a z') }
   
   % if setup_output_for_the_console:
   ${ setup_output_for_the_console }
   
   %endif
   Test run:
-  ${ test_run_output_for_console }</pre>
+  ${ test_run_output_for_console }
   % endif
 
 ---
@@ -1657,8 +1712,7 @@ code: |
 ---
 id: html elements to copy to clipboard
 code: |
-  copier = """
-  <div class="copy_functionality">
+  copier = """<div class="copy_functionality functional_button_container">
     <!-- Can't control textarea styles, esp word-wrap -->
     <textarea readonly aria-hidden="true" class="to_copy"></textarea>
   
@@ -1670,8 +1724,7 @@ code: |
         <span class="copy_cancelled">Cancelled copy</span>
       </div>
     </button>
-  </div>
-  """
+  </div>"""
 ---
 # TODO: Move to files helper section
 id: remove/delete files
@@ -1803,7 +1856,7 @@ content: |
 # Discuss: grid with left-aligned and right aligned
 template: metadata_template
 content: |
-  <section class="section metadata">
+  <section id="metadata" class="section metadata">
 
     <ddl class="container">
       <div class="version row justify-content-between">
@@ -1815,9 +1868,9 @@ content: |
         <dd class="col-6">${ alkip_version }</dd>
       </div>
 
-      <div class="tags row justify-content-between">
+      <div id="tag_expression" class="tags row justify-content-between">
         <dt class="col-6"><a href="https://assemblyline.suffolklitlab.org/docs/components/ALKiln/writing/#tags:~:text=Tag%20expression-,What%20tests%20run%3F,-%40likes_bears">Tag expression</a></dt>
-        <dd class="col-6">${ tag_expression }</dd>
+        <dd class="col-6">${ tag_expression or "No tag expression" }</dd>
       </div>
   
       % if defined('test_start_time'):
@@ -2042,19 +2095,42 @@ need:
 code: |
   def download_file_button( url ):
     return f"""<div class="download functional_button_container">
-      <a class="btn btn-secondary download_button" title="Download file" type="button" target="_blank" href="{ url }"><i class="fas fa-download"></i></a>
+      <a download class="btn btn-secondary download_button" title="Download file" type="button" target="_blank" href="{ url }"><i class="fas fa-download"></i></a>
       </div>"""
 ---
-# new TODO: Discuss: Repurpose this for artifacts zip and possible future use with Scenario folders, etc?
+# TODO: Discuss: Repurpose this for artifacts zip and possible future use with Scenario folders, etc?
 need:
   - action_button_html
 code: |
   def download_zip_button( url ):
+    return f"""<div class="download">
+      <a download class="btn btn-secondary download_button" title="Download all" type="button" target="_blank" href="{ url }"><i class="fas fa-file-zipper"></i> Download all</a>
+      </div>"""
+---
+need:
+  - action_button_html
+  - jumper_bottom_suffix
+code: |
+  def to_section_bottom_button( jump_down_prefix ):
+    return f"""<nav class="jump jump_to_bottom_container functional_button_container">
+        <a id="{ jump_down_prefix }_down_jumper" title="Go to the bottom of the section" class="jump_to_bottom btn btn-secondary" type="button" href="#{ jump_down_prefix }{ jumper_bottom_suffix }"><i class="fas fa-arrows-down-to-line"></i></a>
+      </nav>"""
+---
+need:
+  - action_button_html
+  - jumper_bottom_suffix
+code: |
+  def to_section_top_button( jump_up_id ):
     return f"""
-      <div class="download">
-      <a class="btn btn-secondary download_button" title="Download all" type="button" target="_blank" href="{ url }"><i class="fas fa-file-zipper"></i> Download all</a>
-      </div>
-    """
+    <footer>
+      <nav class="jump jump_to_top_container functional_button_container">
+        <a id="{ jump_up_id }{ jumper_bottom_suffix }" title="Go to the top of the section" class="jump_to_top btn btn-secondary" type="button" href="#{ jump_up_id }"><i class="fas fa-arrows-up-to-line"></i></a>
+      </nav>
+    </footer>"""
+---
+id: jumper bottom html suffix to avoid future maintenance problems
+code: |
+  jumper_bottom_suffix = "_bottom"
 ---
 # Misc
 ---
