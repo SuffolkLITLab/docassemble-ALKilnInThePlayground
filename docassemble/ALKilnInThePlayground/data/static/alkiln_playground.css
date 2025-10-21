@@ -3,7 +3,7 @@ body {
   --detected-nav-bar-height: 56px;
   --detected-h2-height: 56px;
   --detected-h3-height: 56px;
-  --h4-height: 56px;
+  --detected-h4-height: 56px;
   --border-width: 1px;
 }
 
@@ -32,7 +32,7 @@ header.sticky_scroll {
 
 section:has(header.sticky_scroll) .card,
 section:has(header.sticky_scroll) .accordion {
-  note: "Ensures bottom border is visible";
+  note: "Ensures bottom border is visible when the sticky header hits the bottom";
   position: relative;
   top: 2px;
 }
@@ -73,16 +73,10 @@ h2 {
 #alkiln_test_output .accordion-header h3 {
   font-size: 1.1em;
 }
-#alkiln_test_output .accordion-header h3 {
-  font-size: 1.1em;
-}
-
-:root {
-  --accordion-header-edge: calc(1.5em * .5);
-}
 
 #alkiln_test_output .accordion-header h3 {
-  padding-left: var(--accordion-header-edge);
+  note: "Based on previous hard-coded accordion styles";
+  padding-left: calc(1.5em * .5);
 }
 
 header .description {
@@ -153,7 +147,7 @@ header h2:has(div) {
 
 .quick_buttons menu,
 .quick_buttons nav {
-  width: 100%
+  width: 100%;
 }
 
 #alkiln_test_output .quick_view .no_output ul {
@@ -213,7 +207,7 @@ iframe#alkiln_notifications {
 
 .quick_buttons.top a,
 .quick_buttons.top button {
-  width: 100%
+  width: 100%;
 }
 
 .accordion {

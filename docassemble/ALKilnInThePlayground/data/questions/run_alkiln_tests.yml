@@ -1448,6 +1448,7 @@ content: |
     <p>${ logs_more_info }</p>
   </div>
 ---
+# We plan to remove functions. This is part of the preparation.
 objects:
   - sections: DAList.using( object_type=DAObject, complete_attribute="header" )
 ---
@@ -1507,7 +1508,7 @@ comment: |
 
     # Folder for all tmp files
     # f"{ very safe name }_tmp"
-    # But this will makek for more complex code, even though it makes a cleaner
+    # But this will make for more complex code, even though it makes a cleaner
     # directory
   
     zip_process = subprocess.run([
