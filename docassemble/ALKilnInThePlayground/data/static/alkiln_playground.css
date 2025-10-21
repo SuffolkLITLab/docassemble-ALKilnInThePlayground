@@ -1,10 +1,14 @@
-body {
-  note: "Temporary value. JS will change it later if allowed. Also happens to be the current nav height."
+root: {
+  note: "Temporary value. JS will change it later if allowed. Also happens to be the current nav height.";
   --detected-nav-bar-height: 56px;
   --detected-h2-height: 56px;
   --detected-h3-height: 56px;
   --detected-h4-height: 56px;
   --border-width: 1px;
+  --functional-button-margin: .2rem;
+  note: "v1 --serious-bg: oklch(0.95 0.0165 244.89);";
+  note: "v2 --serious-bg: color-mix(in srgb, oklch(0.95 0.0165 244.89) 80%, black 10%);";
+  --serious-bg: var(--bs-gray-300);
 }
 
 * {
@@ -85,13 +89,12 @@ header .description {
   align-items: center;
 }
 
-:root {
-  --functional-button-margin: .2rem;
-}
 .functional_buttons_container {
+  note: "Plural 'buttons'";
   margin-right: var(--functional-button-margin);
 }
 .functional_button_container {
+  note: "Singular 'button'";
   margin-left: var(--functional-button-margin);
 }
 
@@ -173,12 +176,6 @@ header h2:has(div) {
 
 #alkiln_test_output .thumbnail {
   margin-bottom: 0.2em;
-}
-
-:root {
-  note: "v1 --serious-bg: oklch(0.95 0.0165 244.89);";
-  note: "v2 --serious-bg: color-mix(in srgb, oklch(0.95 0.0165 244.89) 80%, black 10%);";
-  --serious-bg: var(--bs-gray-300);
 }
 
 pre {

@@ -1,3 +1,4 @@
+# TODO: When offline, skip the install ALKiln page (except when they have no ALKiln installed). Leave button on other pages to install another version, but pressing that button should somehow show the user that they can't install a different ALKiln version when they're offline.
 # TODO: In "current interviews" page, clarify the nature of the specific test run. Use `set_parts()` to set the interview title based on the project that was tested and subtitle based on the date and time
 # TODO: Clean up logs
 # TODO: Add log codes
@@ -482,7 +483,7 @@ code: |
 
     return connection_msg
 ---
-# TODO: Discuss: Should `if matches == None:` be an error path?
+# Discuss: Should `if matches == None:` be an error path?
 need:
   - da_log_more_info
 code: |
@@ -1506,10 +1507,9 @@ comment: |
     _debug(f'💡 ALKP0050 ALKiln will get all the generated tests at "{ folder_path }", zip them, and try to save that zip at "{ gen.zip_pre_path }"' )
     _debug(f"""gen zip_process = subprocess.run(['zip', '-rv', { gen.zip_pre_path }, '*' ], cwd={ folder_path }, check=False, capture_output=True)""" )
 
-    # Folder for all tmp files
+    # Discuss: Folder for all tmp files would be more conceptually clear
     # f"{ very safe name }_tmp"
-    # But this will make for more complex code, even though it makes a cleaner
-    # directory
+    # But this will make code more complex
   
     zip_process = subprocess.run([
         # If we add a timestamp to _alkiln_generated, we can use `ls` (with a
@@ -2120,7 +2120,6 @@ need:
   - action_button_html
   - jumper_bottom_suffix
 code: |
-  # Discuss: parameter names aren't quite right
   def to_section_top_button( jump_up_id ):
     return f"""
     <footer>
