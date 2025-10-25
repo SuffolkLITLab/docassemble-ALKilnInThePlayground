@@ -24,8 +24,8 @@ code: |
   artifacts_error_msgs = []
 
   # In case we need them later
-  artifacts_stderr_message = f'■■■ ALKiln artifacts ERROR ALKP0016: The artifacts folder python subprocess completed, but the `alkiln-artifacts` command\'s javascript was unhappy.'
-  artifacts_exception_message = f'■■■ ALKiln artifacts ERROR ALKP0017: Errored when ALKiP tried to run the artifacts folder setup process.'
+  artifacts_stderr_message = f"🤕 ALKiln ERROR: The artifacts folder python subprocess completed, but the `alkiln-artifacts` command\'s javascript was unhappy."
+  artifacts_exception_message = f"🤕 ALKiln ERROR: Errored when ALKiP tried to run the artifacts folder setup process."
 
   has_started_artifacts = True
 
@@ -33,12 +33,12 @@ code: |
   bin_name = "alkiln-artifacts"
   artfct_cmd_exists = has_command( bin_name )
   if not artfct_cmd_exists:
-    no_bin_msg = f"🖊️ ALKP0023 Note: The '{ bin_name }' command doesn't exist in this version of ALKiln"
+    no_bin_msg = f"🖊️ ALKiln NOTE: The '{ bin_name }' command doesn't exist in this version of ALKiln"
     _debug( no_bin_msg )
     artifacts_folder_and_runtime_config_final_status = 'nonexistent'
 
   else:
-    _debug(f"💡 ALKP0032 Info: The '{ bin_name }' command exists.")
+    _debug(f"💡 ALKiln INFO: The '{ bin_name }' command exists.")
   
     artifacts_subprocess = None
     try:

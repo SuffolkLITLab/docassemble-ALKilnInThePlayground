@@ -17,8 +17,8 @@ code: |
   generation_error_msgs = []
   
   # In case we need them later
-  generation_exception_message = f'■■■ ALKiln generation ERROR ALKP0024: While generating randomized ".feature" files, ALKiln ran into an error we have not seen before.'
-  generation_stderr_message = f'■■■ ALKiln generation ERROR ALKP0025: Errored while trying to generate randomized ".feature" files.'
+  generation_exception_message = f"""🤕 ALKiln ERROR: While generating randomized ".feature" files, ALKiln ran into an error we have not seen before."""
+  generation_stderr_message = f"""🤕 ALKiln ERROR: Errored while trying to generate randomized ".feature" files."""
   
   has_started_generation = True
 
@@ -26,12 +26,12 @@ code: |
   bin_name = "alkiln-generate"
   gen_cmd_exists = has_command( bin_name )
   if not gen_cmd_exists:
-    no_bin_msg = f"🖊️ ALKP0025 Note: The '{ bin_name }' command doesn't exist in this version of ALKiln"
+    no_bin_msg = f"🖊️ ALKiln NOTE: The '{ bin_name }' command doesn't exist in this version of ALKiln"
     _debug( no_bin_msg )
     generate_constrained_random_tests_status = 'nonexistent'
 
   else:
-    _debug(f"💡 ALKP0033 Info: The '{ bin_name }' command exists.")
+    _debug(f"💡 ALKiln INFO: The '{ bin_name }' command exists.")
   
     generation_subprocess = None
     try:
