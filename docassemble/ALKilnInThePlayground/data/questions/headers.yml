@@ -4,6 +4,20 @@
 id: sticky header
 code: |
   def sticky_h2_header( headerer ):
+    """
+    Return the HTML for an <h2> header with the right structures and styles.
+  
+    Args:
+        headerer (DAObject): The data for the header. They are valid HTML
+            strings and ids. Attribs:
+            - id
+            - heading
+            - nav (optional)
+            - menu (optional)
+
+    Returns:
+        str: the HTML for an <h2> header
+    """
     return f"""
       <header id="{ headerer.id }_header" class="sticky_scroll">
         <h2 class="description">
@@ -27,6 +41,21 @@ code: |
 id: sticky accordion
 code: |
   def sticky_accordion_header( accorder ):
+    """
+    Return the HTML for a Bootstrap accordion header with the right structures
+        and styles.
+  
+    Args:
+        accorder (DAObject): The data for the accordion header. They are valid
+            HTML strings and ids. Attribs:
+            - id
+            - heading
+            - nav (optional)
+            - menu (optional)
+
+    Returns:
+        str: the HTML for a Bootstrap accordion header
+    """
     return f"""
       <header id="{ accorder.id }_header" class="accordion-header sticky_scroll">
         <h3 class="description">
@@ -39,6 +68,43 @@ code: |
           { accorder.attr("menu") or "" }
         </div>
       </header>"""
+---
+# Header parts
+---
+# id: menu for download and copy
+# generic object: DAObject
+# template: x.menu_download_n_copy
+# content: |
+#   ...
+---
+id: menu for maybe downloads and maybe copying
+code: |
+  def menu_download_n_copy( menuer ):
+    """
+    Return the HTML for a menu element containing the download and copy buttons.
+  
+    Note: I use properties here instead of arguements as preparation for
+        removing functions from the codebase
+  
+    Args:
+        menuer (DAObject): The data for a menu element. They are valid HTML
+            strings and ids. Attribs:
+            - zip (optional)
+            - download (optional)
+            - copier (optional)
+
+    Returns:
+        str: the HTML for a menu element
+    """
+    return f"""<menu>
+      { menuer.attr("zip") or "" }{ menuer.attr("download") or "" }{ menuer.attr("copier") or "" }
+    </menu>"""
+---
+# id: copier functionality abstracted
+# generic object: DAObject
+# template: x.copier
+# content: |
+#   ...
 ---
 # Example of possible future non-function integration
 comment: |
@@ -63,45 +129,4 @@ comment: |
     { featuer.accordian_content }
   </div>
   """
----
-# Header parts
----
-# id: menu for download and copy
-# generic object: DAObject
-# template: x.menu_download_n_copy
-# content: |
-#   ...
----
-id: menu for maybe downloads and maybe copying
-code: |
-  def menu_download_n_copy( menuer ):
-    """
-    Return the html for a menu element containing the download and copy buttons.
-
-    Note: I use properties here instead of arguements as preparation for
-        removing functions from the codebase
-    """
-    return f"""<menu>
-      { menuer.attr("zip") or "" }{ menuer.attr("download") or "" }{ menuer.attr("copier") or "" }
-    </menu>"""
----
-id: copier functionality abstracted
-generic object: DAObject
-template: x.copier
-content: |
-  <div class="copy_functionality">
-  
-    <!-- Can't control textarea styles, esp word-wrap, so invisible -->
-    <textarea readonly aria-hidden="true" class="to_copy"></textarea>
-  
-    <button class="btn btn-secondary copy_button" type="button">
-      <i class="far fa-copy"></i>
-      <div class="statuses">
-        <span class="copy_default">Copy</span>
-        <span class="copy_done">Copied!</span>
-        <span class="copy_cancelled">Cancelled copy</span>
-      </div>
-    </button>
-  
-  </div>
 ---

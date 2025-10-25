@@ -1,14 +1,14 @@
-root: {
+:root {
   note: "Temporary value. JS will change it later if allowed. Also happens to be the current nav height.";
   --detected-nav-bar-height: 56px;
   --detected-h2-height: 56px;
   --detected-h3-height: 56px;
   --detected-h4-height: 56px;
-  --border-width: 1px;
+  --alk-border-width: 1px;
   --functional-button-margin: .2rem;
-  note: "v1 --serious-bg: oklch(0.95 0.0165 244.89);";
-  note: "v2 --serious-bg: color-mix(in srgb, oklch(0.95 0.0165 244.89) 80%, black 10%);";
-  --serious-bg: var(--bs-gray-300);
+  note: "v1 --alk-serious-bg: oklch(0.95 0.0165 244.89);";
+  note: "v2 --alk-serious-bg: color-mix(in srgb, oklch(0.95 0.0165 244.89) 80%, black 10%);";
+  --alk-serious-bg: var(--bs-gray-300);
 }
 
 * {
@@ -31,7 +31,7 @@ header.sticky_scroll {
 }
 
 .accordion header.sticky_scroll {
-  box-shadow: 0px -20px 0px var(--serious-bg);
+  box-shadow: 0px -20px 0px var(--alk-serious-bg);
 }
 
 section:has(header.sticky_scroll) .card,
@@ -107,14 +107,14 @@ header .description {
 }
 
 .output {
-  background: var(--serious-bg);
-  border: var(--border-width) solid var(--bs-secondary);
+  background: var(--alk-serious-bg);
+  border: var(--alk-border-width) solid var(--bs-secondary);
   margin-bottom: 1em;
 }
 
 #alkiln_test_output .output:has(.no_output) {
-  background: var(--serious-bg);
-  border: var(--border-width) solid var(--bs-secondary);
+  background: var(--alk-serious-bg);
+  border: var(--alk-border-width) solid var(--bs-secondary);
   margin-bottom: 1em;
 }
 
@@ -179,8 +179,8 @@ header h2:has(div) {
 }
 
 pre {
-  border: var(--border-width) solid var(--bs-dark);
-  background: var(--serious-bg);
+  border: var(--alk-border-width) solid var(--bs-dark);
+  background: var(--alk-serious-bg);
   text-align: left;
 }
 
@@ -243,8 +243,8 @@ h2 {
 }
 
 .sticky_scroll:has(h2) {
-  width: calc( 100% - (var(--border-width) + var(--border-width)) );
-  margin-left: var(--border-width);
+  width: calc( 100% - (var(--alk-border-width) + var(--alk-border-width)) );
+  margin-left: var(--alk-border-width);
 }
 
 section footer .functional_button_container {

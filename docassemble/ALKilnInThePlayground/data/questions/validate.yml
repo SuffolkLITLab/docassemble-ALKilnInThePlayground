@@ -17,8 +17,8 @@ code: |
   validation_error_msgs = []
   
   # In case we need them later
-  validation_exception_message = f'■■■ ALKiln validation ERROR ALKP0017: While validating ".feature" files, ALKiln ran into an error we have not seen before.'
-  validation_stderr_message = f'■■■ ALKiln validation ERROR ALKP0045: Errored while trying to validate ".feature" files.'
+  validation_exception_message = f"""🤕 ALKiln ERROR: While validating ".feature" files, ALKiln ran into an error we have not seen before."""
+  validation_stderr_message = f"""🤕 ALKiln ERROR: Errored while trying to validate ".feature" files."""
   
   has_started_validation = True
 
@@ -26,12 +26,12 @@ code: |
   bin_name = "alkiln-validate"
   vldn_cmd_exists = has_command( bin_name )
   if not vldn_cmd_exists:
-    no_bin_msg = f"🖊️ ALKP0024 Note: The '{ bin_name }' command doesn't exist in this version of ALKiln"
+    no_bin_msg = f"🖊️ ALKiln NOTE: The '{ bin_name }' command doesn't exist in this version of ALKiln"
     _debug( no_bin_msg )
     validate_feature_files_final_status = 'nonexistent'
 
   else:
-    _debug(f"💡 ALKP0034 Info: The '{ bin_name }' command exists.")
+    _debug(f"💡 ALKiln INFO: The '{ bin_name }' command exists.")
   
     validation_subprocess = None
     try:

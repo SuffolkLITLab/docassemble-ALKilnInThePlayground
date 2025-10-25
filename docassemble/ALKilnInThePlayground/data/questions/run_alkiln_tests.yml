@@ -1,9 +1,7 @@
 # TODO: When offline, skip the install ALKiln page (except when they have no ALKiln installed). Leave button on other pages to install another version, but pressing that button should somehow show the user that they can't install a different ALKiln version when they're offline.
 # TODO: In "current interviews" page, clarify the nature of the specific test run. Use `set_parts()` to set the interview title based on the project that was tested and subtitle based on the date and time
-# TODO: Clean up logs
-# TODO: Add log codes
 # TODO: Reduce number of functions into plain blocks or events. Incidentally, that will allow avoiding the complex return value for getting the html.
-# TODO: Add codes to log messages. Add a "verbose" flag?
+# TODO: Add codes to log messages.
 # TODO: It's unclear that the purpose of the link below a file is to download the file.
 # TODO: Use zip files and artifact folder **just once**. Use those to create in-interview variables. Since we delete the orginal zip files when we get to `show_output`, it should avoid showing future interview session visitors phantom errors.
 # TODO: Add "Running offline" info callout to every page when offline
@@ -11,11 +9,18 @@
 # TODO: Guard function calls for functions that are only used once with a flag. That will help us find where undefined variables are causing functions to be run repeatedly.
 # TODO: There is a box shadow above accordion items that hides the gap between the accordion item and the header above it. That's slow. Instead, use a new element created just for that purpose.
 # TODO: Clean up unused code, add doc strings
-# TODO: Replace `log` with `_log` or `_debug`
+# TODO: Replace `log` with `_log` or `_debug` except in background actions
+# TODO: replace `raise`s with error screens
 # TODO: Add more ids, including for code blocks
+# Discuss: Show the user's username to them? Not great for recording anonymized runs through the interview, but it would put the information front and center. People have gotten confused before when exploring other user's sessions and, I believe, Projects.
+# Discuss: Allow authors to run tests in other people's Playgrounds when they have permissions to open sessions and Playgrounds of other users while they are exploring those Playgrounds.
 # Research: exactly how do ids on code blocks affect the cache
 
 # Closes: #3, https://github.com/SuffolkLITLab/ALKiln/issues/1017, +
+
+# NOTES
+# Logs emojis: 🖊️ 🤕 💡
+# format: 🤕 ALKiln ERROR ALKP00nn: (Be clear it's from ALKiln with log code prefix indicatign to devs that it's from ALKiP. Also makes it easier when first editing the log codes because it's easier to delete just the log code.)
 ---
 metadata:
   title: |
@@ -50,34 +55,32 @@ need:
   - _log
   - _debug
 code: |
-  if not user_has_privilege(['admin', 'developer']):
+  if not user_has_privilege( ['admin', 'developer'] ):
     ask_to_log_in
   
-  if len(dangerous_config_var_names) > 0:
+  if len( dangerous_config_var_names ) > 0:
     warn_about_dangerous_config_vars
   
   if redo_after_stopped_with_invalid_install:
     invalid_install = True
     undefine_install_task = True
     require_restart_install_timer = True
-    undefine('ask_version')
-    undefine('install_failed')
+    undefine( 'ask_version' )
+    undefine( 'install_failed' )
     redo_after_stopped_with_invalid_install = False
   
   if undefine_install_task:
-    undefine('install_task')
+    undefine( 'install_task' )
     undefine_install_task = False
 
-  _debug(url_args)
-  _debug(url_args.get("skip_install", False))
-  if url_args.get("skip_install", False) != "true" and version_error == "":
-    # temp_screen
+  _debug( f"""url_args: { url_args }""" )
+  if url_args.get( "skip_install", False ) != "true" and version_error == "":
     ask_version
   
     if npm_connection_msg == "ok" and ( wants_install or invalid_install ):
 
-      alkiln_current_version = "5.15.0" # testing
-      alkip_version = "1.3.1"  # testing
+      # alkiln_current_version = "5.15.0" # testing
+      # alkip_version = "1.3.1"  # testing
   
       # Show pre-installation ALKiln announcements if needed
       if ( post_install_request_news != None ):
@@ -85,7 +88,7 @@ code: |
   
       # Don't install if not needed
       # Discuss: for some reason (at least when I switch between online and offline) we sometimes go to the install screen when going back to restart with a version number of "None". There are other shenanigans that happen when going back with `restart`. We have a lot to explore there. There are enough hiccups that it may be worth adding a warning when the author has been offline.
-      if (started_with_different_version or invalid_install) and version_to_install:
+      if ( started_with_different_version or invalid_install ) and version_to_install:
         install_task
         # `.wait()` could cause a timeout
         if install_task.ready():
@@ -111,8 +114,10 @@ code: |
             restart_install_timer
           wait_for_install
     
-  not_wants_tags
+  project_name
   tag_expression
+  set_parts( title=f"ALKiln { project_name } tests" )
+  set_parts( subtitle=tag_expression )
 
   if (
     ( artifacts_folder_and_runtime_config_final_status == 'done' and artifacts_errored )
@@ -124,28 +129,26 @@ code: |
     setup_errored = False  
   
   if setup_errored:
-    _debug('One of the setup steps errored')
+    _debug( "One of the setup steps errored" )
     # If we expect ALKiln to have the necessary scripts then
     # show the error on final screen
     # (Note: We delete the original files after showing the output
     # screen)
     show_output  # terminating screen
 
-  _debug('Running alkiln tests')
-  _debug(f"ready? { test_run_output.ready() }")
-  _debug(f"ran_tests? { ran_tests }")
+  _debug(f"ran_tests: { ran_tests }")
   # After a while (hours? a day?), reloading the page pseudo-triggers the task
   # again, even if it was already done. Except it never ends and the results
   # are from the old task, not the new task.
   if not ran_tests:
-    test_run_output  
+    _debug( "Running alkiln tests" )
+    test_run_output
   
     if stopped_early or test_run_output.ready():
-      _debug(f'stopped_early: { stopped_early }')
+      _debug(f"stopped_early: { stopped_early }")
       run_get_files_html
       # We remove the original files after showing the output screen
       ran_tests = True
-      _debug(f'ran_tests: { ran_tests }')
       show_output
     else:
       waiting_screen
@@ -163,11 +166,12 @@ code: |
 ---
 need:
   - root_path
+  - project_name
 code: |
-  if get_config('s3').get('enable'):
-    sources = f'{ root_path }/playgroundsources/{user_info().id}/{project_name}'
+  if get_config("s3").get("enable", False):
+    sources = f"{ root_path }/playgroundsources/{ user_info().id }/{ project_name }"
   else:
-    sources = f'/usr/share/docassemble/files/playgroundsources/{user_info().id}/{project_name}'
+    sources = f"/usr/share/docassemble/files/playgroundsources/{ user_info().id }/{ project_name }"
 ---
 ####################################
 # Blockers
@@ -188,9 +192,9 @@ event: warn_about_dangerous_config_vars
 question: |
   Before you start, you must change your `alkiln` config keys
 subquestion: |
-  In <a target="_blank" href="${url_of('root', _external=True)}/config">your docassemble server config</a>'s `alkiln` keys, you have used ${ 'variable names' if len(dangerous_config_var_names) > 1 else 'a variable name' } that your operating system is already using:
+  In <a target="_blank" href="${ url_of( 'root', _external=True ) }/config">your docassemble server config</a>'s `alkiln` keys, you have used ${ "variable names" if len( dangerous_config_var_names ) > 1 else "a variable name" } that your operating system is already using:
   
-  % if len(dangerous_config_var_names) > 1:
+  % if len( dangerous_config_var_names ) > 1:
   % for name in dangerous_config_var_names:
   * ${ name }
   % endfor
@@ -200,7 +204,7 @@ subquestion: |
   
   To fix this:
   
-  % if len(dangerous_config_var_names) > 1:
+  % if len( dangerous_config_var_names ) > 1:
   - Change these names to something else in your config. Starting these types of variable names with something unique, like "ALKILN_", might help keep your variable names safe.
   - Update the names in your tests.
   % else:
@@ -237,14 +241,23 @@ code: |
   import json
   
   def filter_versions_greater_or_equal(versions, minimum="0.0.0"):
-    '''Given a list of strings of versions, return a new list of
-    versions at or above the given minimum version.'''
+    """
+    Given a list of strings of versions, return a new list of
+        versions at or above the given minimum version.
+  
+    Args:
+      versions (list of str): List of semver versions.
+      minimum (str): Semver version. Ignore all versions before this version.
+
+    Returns:
+      list of str: List of semver versions.
+    """
     major_versions = []
     pre_versions = []
     try:
-      minimum = [int(s) for s in minimum.split(".", maxsplit=2)]
+      minimum = [ int( part ) for part in minimum.split( ".", maxsplit=2 ) ]
     except Exception as err:
-      raise ValueError(f"■■■ ALKiln Error ALKP0001: npm version filter expected a version string in the form major.minor.patch, but got {minimum}") from err
+      raise ValueError(f"🤕 ALKiln ERROR ALKP0001: npm version filter expected a version string in the form major.minor.patch, but got { minimum }") from err
     for version in versions:
       maj, minor, patch_and_prelease, = version.split(".", maxsplit=2)
       # If there is a prerelease attached, get rid of it in 
@@ -264,7 +277,7 @@ code: |
   # puzzle of above: @>4.0.0 seems to get all versions @>5.0.0 seems to get none (only have a single pre-release right now). When none are found, we get err 'JSONDecodeError: Expecting value: line 1 column 1 (char 0)'
   result = subprocess.run(['npm', 'view', "@suffolklitlab/alkiln", 'versions', '--json'], check=False, capture_output=True)
   if result.returncode != 0:
-    _log('■■■ ALKiln Error ALKP0002: npm install error getting full list of ALKiln\'s versions:')
+    _log('🤕 ALKiln ERROR ALKP0002: npm install errored while getting full list of ALKiln\'s versions:')
     _log(result.stderr.decode("utf-8"))
     alkiln_version_list = []
     alkiln_major_versions = []
@@ -330,7 +343,6 @@ validation code: |
   if not wants_install:
     validation_error('You must install a version of ALKiln')
 ---
-# TODO: Test this more
 # TODO: Test these different versions of the first page show up at the right times
 id: pick which task, with offline and no alkiln installed
 event: ask_version
@@ -352,7 +364,7 @@ subquestion: |
   You will have to run tests later.
 action buttons:
   - label: Restart
-    action: do_new
+    action: do_session_no_args
     icon: undo
     color: warning
 ---
@@ -375,11 +387,17 @@ subquestion: |
   This server's current version of ALKiln is **${ get_installed_version() }**
   
   % if npm_connection_msg == "ok":
-  Do you want to install a different version of ALKiln before testing?
+  Do you want to install a different version of ALKiln before testing? While ALKiln is installing you should **try very hard to avoid**:
+      
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Otherwise causing this server to reload, restart, or stop
 
   % else:
+  Skip this page to just run the tests.
+  
   <div class="alert alert-secondary">
-  ALKilnInThePlayground is unable to install a different version of ALKiln right now. ${ npm_connection_msg }
+  Note: This interview is unable to install any version of ALKiln right now. ${ npm_connection_msg }
   </div>
 
   You can still continue to run tests with your current version of ALKiln.
@@ -391,15 +409,6 @@ fields:
     show if:
       code: |
         npm_connection_msg == "ok"
-  - note: |
-      <div class="alert alert-warning" markdown="1">
-      While ALKiln is installing you should **try very hard to avoid**:
-      
-      - Saving a python module
-      - Pulling or uploading a package with a python module
-      - Otherwise causing this server to reload, restart, or stop
-      </div>
-    show if: wants_install
   - Choose an ALKiln version: version_to_install
     js show if:
       val('wants_install') && !val('wants_experimental')
@@ -439,25 +448,37 @@ code: |
     Perform a GET request that times‑out after `timeout` seconds. Return
     message about connection attempts.
     Log requests.HTTPError for 4xx/5xx status codes.
+
+    TODO: Separate the visual connection message from the connection message
+    logs since we seem to want to give different levels of details in those
+    two places sometimes.
+
+    Args:
+        url (str): url to try to reach
+        timeout (float): Maximum time allowed for the request
+
+    Returns:
+      str: Message about connection attempts.
     """
-    try_later = ". To install any ALKiln version you might have to try again later"
-    we_cant_help = ". The ALKiln team is unable to help with this problem"
+    try_later = "To install any ALKiln version you might have to try again later."
+    we_cant_help = "The ALKiln team is unable to help with this problem."
+
+    connection_msg = "ALKilnInThePlayground was unable to connect to the servers that store ALKiln."
   
     try:
       response = requests.get(url, timeout=timeout)
       # response.raise_for_status()  # Don't raise an error
-  
+
       if response.status_code >= 400 and response.status_code < 500:
         connection_msg = f"ALKilnInThePlayground sent an incorrect request to the servers that store ALKiln and got a { response.status_code } response code. Please get in touch with the ALKiln developers."
-        _log(f"🤕 ALKP0046 Error: { connection_msg }")
+        _log(f"🤕 ALKiln ERROR: { connection_msg }")
         _log( traceback.format_exc() )
   
       if response.status_code >= 500 and response.status_code < 600:
-        connection_msg = f"The servers that store the ALKiln package were unavailable. ALKilnInThePlayground got a { response.status_code } response code{ try_later }."
-        _log(f"🤕 ALKP0046 Error: { connection_msg }")
+        connection_msg = f"The servers that store the ALKiln package were unavailable. ALKilnInThePlayground got a { response.status_code } response code. { try_later }"
+        _log(f"🤕 ALKiln ERROR: { connection_msg }")
         _log( traceback.format_exc() )
-        "Failed to connect to the servers that store ALKiln."
-
+  
       if response.ok:
         connection_msg = "ok"
   
@@ -467,19 +488,22 @@ code: |
       # Discuss: More detailed explanations have more info, but are a possible
       #     rabbit hole for the authors:
       #     "ALKiln is stored on a third-party server that we trust, npmjs."
-      connection_msg = f'ALKilnInThePlayground is unable to connect to the server where ALKiln is stored{ we_cant_help }{ try_later }.'
-      _log("🤕 ALKP0047 Error: npmjs ConnectionError. ALKilnInThePlayground is unable to connect to the server where ALKiln is stored. The author's docassemble server might be disconnected from the internet, npmjs' server may be unavailable, or something else may be wrong{ we_cant_help }{ try_later }. Stacktrace:")
+      connection_msg = f'ALKilnInThePlayground is unable to connect to the server where ALKiln is stored. { we_cant_help } { try_later }'
+      _log("🤕 ALKiln ERROR: npmjs ConnectionError. ALKilnInThePlayground is unable to connect to the servers where ALKiln is stored. The author's docassemble server might be disconnected from the internet, npmjs' server may be unavailable, or something else may be wrong. { we_cant_help } { try_later } Stacktrace:")
       _log( traceback.format_exc() )
   
     except requests.RequestException as req_err:
-      connection_msg = 'ALKilnInThePlayground ran into a "RequestException" error when it tried to connect to the server that stores the ALKiln package{ try_later }'
-      _log(f"🤕 ALKP0048 Error: { connection_msg }. Stacktrace:")
+      connection_msg = 'ALKilnInThePlayground ran into a "RequestException" error when it tried to connect to the server that stores the ALKiln package. { try_later }'
+      _log(f"🤕 ALKiln ERROR: { connection_msg } Stacktrace:")
       _log( traceback.format_exc() )
   
     except Exception as general_err:
-      connection_msg = f'ALKilnInThePlayground ran into a "{ type( general_err ).__name__ }" error when it tried to connect to the server that stores the ALKiln package{ try_later }'
-      _log(f"🤕 ALKP0048 Error: { connection_msg } Stacktrace:")
+      connection_msg = f'ALKilnInThePlayground ran into a "{ type( general_err ).__name__ }" error when it tried to connect to the server that stores the ALKiln package. { try_later }'
+      _log(f"🤕 ALKiln ERROR: { connection_msg } Stacktrace:")
       _log( traceback.format_exc() )
+      # Discuss clarity of an alternative:
+      # _log( traceback.format_exc() )
+      # _log(f"🤕 ALKiln ERROR: { connection_msg } See the error message above.")
 
     return connection_msg
 ---
@@ -491,17 +515,21 @@ code: |
   import re
   
   def get_installed_version():
-    '''Returns string to print for the version number or an error message with
+    """
+    Returns string to print for the version number or an error message with
         'Could not get'.
         Discuss: a better way to fail. Separate the error messages from the
         failure itself.
-    '''
+
+    Returns:
+        str: The version number or an error to show the user.
+    """
 
     # https://stackoverflow.com/a/13332300
     packages = subprocess.run(['npm', 'list', '-g', '--prefix', '/var/www/.npm-global', '--depth', '0', '-p', '-l'], check=False, capture_output=True)
     # What would cause an error here?
     if packages.returncode != 0:
-      _log('🤕 ALKiln Error ALKP0003: getting this server\'s currently installed ALKiln version:')
+      _log('🤕 ALKiln ERROR ALKP0003: getting this server\'s currently installed ALKiln version:')
       _log(f'Error code: { packages.returncode }')
       _log( packages.stderr.decode("utf-8") )
       server_version = f"Could not get this server's version of ALKiln. ALKilnInThePlayground got an error instead. { da_log_more_info }"
@@ -518,18 +546,18 @@ code: |
 reconsider: True
 id: alkip_version
 code: |
-  # import importlib
+  import importlib
   
-  # # In an installed package:
-  # try:
-  #   # In the playground, I believe this would be "playground". Haven't yet
-  #   # found a way to get the version number of a Playground ALKiP
-  #   alkip_version = importlib.metadata.version( current_context().package )
+  # In an installed package:
+  try:
+    # In the playground, I believe this would be "playground". Haven't yet
+    # found a way to get the version number of a Playground ALKiP
+    alkip_version = importlib.metadata.version( current_context().package )
   
-  # except:
-  #   alkip_version = 'development'  # Don't show any notifications in development environment until we work this out
+  except:
+    alkip_version = 'development'  # Don't show any notifications in development environment until we work this out
   
-  alkip_version = '1.4.0'  # testing. TODO: remove
+  # alkip_version = '1.4.0'  # testing. TODO: remove
 ---
 reconsider: True
 id: alkiln_current_version
@@ -548,7 +576,7 @@ code: |
 reconsider: True
 id: dal_version
 code: |
-  dal_version = None  # Discuss: needed? Not implemented for now.
+  dal_version = None  # Discuss: Is this needed? Not implemented for now.
 ---
 reconsider: True
 id: da_update_version
@@ -578,12 +606,17 @@ code: |
   
   def get_the_news():
     """
-    Will use `try` to avoid causing any stopping errors.
+    Returns the HTML string for any relevant ALKiln notifications.
+  
+    Note: Will use `try` a lot to avoid causing any stopping errors.
+
+    Returns:
+        str: the HTML string for any relevant ALKiln notifications.
     """
     bin_name = "alkiln-news"
     news_cmd_exists = has_command( bin_name )
     if not news_cmd_exists:
-      _debug(f"🖊️ ALKP0026 Note: The '{ bin_name }' command doesn't exist in this version of ALKiln")
+      _debug(f"🖊️ ALKiln NOTE: The '{ bin_name }' command doesn't exist in this version of ALKiln")
       return None
 
     _debug(f"alkip_version {alkip_version}", "console")
@@ -602,12 +635,11 @@ code: |
   
     to_run = [f'/var/www/.npm-global/bin/{ bin_name }'] + news_args_strs
 
-    _debug('news 1')
+    # Discuss: Switch the order of these arguments?
     custom_env = dict( os.environ, **env_vars )
-    _debug('news 2')
     returncode = None
     
-    _debug('□□□ ALKiP: Starting ALKiln news bulletin check. Running:')
+    _debug('💡 ALKiln INFO: Starting ALKiln news bulletin check. Running:')
     _debug(to_run)
 
     try:
@@ -622,8 +654,8 @@ code: |
   
       if news_subprocess.returncode != 0:
         news_err_msg = news_subprocess.stderr.decode('utf-8')
-        _log('🖊️ ALKiP NOTE ALKP0014: Skipped getting news bulletin from ALKiln')
-        _log( news_err_msg )
+        _log('🖊️ ALKiln NOTE: Skipped getting news bulletin from ALKiln')
+        _debug( news_err_msg )
         preprint = None
       else:
         preprint = news_subprocess.stdout.decode('utf-8')
@@ -631,11 +663,11 @@ code: |
       if preprint != None:
         codes = ' '.join(re.findall(r'ALK\d{4}', preprint))
         if ("ALK0278" in preprint or "ALK0279" in preprint):
-          _debug(f"□□□ ALKiP: Looked for notifications from ALKiln. There were none. No news is probably good news. Returned code or codes: { codes }")
+          _debug(f"💡 ALKiln INFO: Looked for notifications from ALKiln. There were none. No news is probably good news. Returned code or codes: { codes }")
           preprint = None
       
         else:
-          _log(f"□□□ ALKiP: Found ALKiln notifications. If you can't already see them, refresh your interview screen. Returned code or codes: { codes }")
+          _log(f"💡 ALKiln INFO: Found ALKiln notifications. If you can't already see them, refresh your interview screen. Returned code or codes: { codes }")
   
     except Exception as news_error:
       define('broad_news_exception', news_error)
@@ -648,15 +680,29 @@ code: |
   import traceback
 
   def log_broad_news_exception( current_error ):
+    """
+    Given an ALKiln notification error, log the error in the appropriate way.
+        That is, if the error is not necessary only log it if debugging is
+        turned on, otherwise only log it if it is useful to the author.
+        We are currently unsure what the criteria of "necessary" mean.
+
+    Args:
+        current_error (error or str): An error object or error message.
+    """
     log_to_debug = True
-    if defined('broad_news_exception'):
-      if str(broad_news_exception) != str(current_error):
+    if defined( "broad_news_exception" ):
+      if str( broad_news_exception ) != str( current_error ):
+        _debug(f"""str( broad_news_exception ): { str( broad_news_exception )}, str( current_error ): { str( current_error ) }""")
+        # I swear this contingent was necessary, though I'm no longer sure why
+        # I believe this means this is a relevant error object as opposed to a
+        # message and thus that the author should know about in their log. I do
+        # remember it was an edge case, but not how to trigger it again.
         log_to_debug = False
     else:
-      define('broad_news_exception', current_error)
+      define( "broad_news_exception", current_error )
       log_to_debug = False
 
-    news_distributor_msg = f"🖊️ ALKiP: Unable to get the ALKiln notifications that come with ALKiln v5.16.0 or above. Potentially more info:"
+    news_distributor_msg = f"🖊️ ALKiln NOTE: ALKilnInThePlayground was unable to get the ALKiln notifications that come with ALKiln v5.16.0 or above. Potentially more info:"
     if log_to_debug:
       _debug( news_distributor_msg )
       _debug("\n".join( traceback.format_exception( broad_news_exception ) ))
@@ -670,14 +716,17 @@ id: news before asking to install a different version of ALKiln
 need:
   - get_the_news
 code: |
+  # Trigger the below function only once. Consider using a task for this.
+  # TODO: Research why this in particular is getting re-triggered
   if not got_pre_install_request_news:
     got_pre_install_request_news = True
-    pre_install_request_news = get_the_news() # Triggers function on every loop
+    pre_install_request_news = get_the_news()
 ---
 id: default value for got_pre_install_request_news
 code: |
   got_pre_install_request_news = False
 ---
+id: news relevant to this server and test configuration
 need:
   - pre_install_request_news
 template: pre_install_request_news_template
@@ -692,14 +741,15 @@ content: |
 id: post-install news
 code: |
   post_install_request_news = get_the_news()
-  _debug("got the post-news:", "console")
-  _debug(post_install_request_news, "console")
 ---
+id: any relevant news after author has requested a new ALKiln version
+# This template will always be visible if the author gets to this page
 template: post_install_request_news_template
 content: |
   <iframe id="alkiln_notifications"></iframe>
   <div id="alkiln_broadsheet_content_data" data-broadsheet="${ encode_name( str( post_install_request_news )) }" style="display: none;" aria-hidden="true"></div>
 ---
+# TODO: Test removing this
 id: default already_started_news_broadcast value
 code: |
   already_started_news_broadcast = False
@@ -717,11 +767,15 @@ subquestion: |
   If you want to pick a different version, go back a screen. If not, keep going!
 continue button field: read_the_news
 back button: True
+back button label: Install a different version
 ---
+# TODO: How long does this typically take? If short enough, try changing this to a foreground task
 code: |
   install_task = background_action('install_alkiln', None, version=version_to_install)
 ---
 event: install_alkiln
+need:
+  - did_install
 code: |
   import subprocess
   import os
@@ -734,45 +788,47 @@ code: |
   # we don't know a simple way to get the npm version from the
   # branch installation so we can help the user install the
   # right version or, alternatively, avoid installing anything
-  # unecessary. On GitHub, though, we hope to use the branch
+  # unnecessary. On GitHub, though, we hope to use the branch
   # or commit as the source of truth for our version. This
   # unfortunately means there can't be just one source of truth
   # for which version of ALKiln is being used.
   
-  # if statement for idempotency? Run install only once. Needed here?
+  # Run install only once. Needed here?
   if not did_install:
     to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
     install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
     did_install = True
   
+  log('💡 ALKiln INFO: Trying to install version {action_argument("version")}.')
   if install_output.returncode != 0:
     result = install_output.stderr.decode('utf-8')
-    log(f'■■■ ALKiln Error ALKP0004: installing ALKiln version {action_argument("version")} failed')
+    log(f'🤕 ALKiln ERROR ALKP0004: installing ALKiln version {action_argument("version")} failed')
     log(result)
     
     # Should this be a default behavior with any error?
     if 'ENOTEMPTY' in result:
       # When tested, returned non-zero exit status 217 was the logged subprocess err
       
-      log('□□□ ALKiln: Trying to clean up the old ALKiln installation.')
+      log('💡 ALKiln INFO: Trying to clean up the old ALKiln installation.')
       # https://stackoverflow.com/a/72022642
       delete_kiln_output = subprocess.run(['rm', '-r', '/var/www/.npm-global/lib/node_modules/@suffolklitlab'], check=False, capture_output=True)
       
       # Do we need an idempotency flag here?
-      log(f'□□□ ALKiln: Trying to install version {action_argument("version")} again.')
+      log('💡 ALKiln INFO: Trying to install version {action_argument("version")} again.')
       install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
       
-      # Not sure what more we can do at this point if it goes wrong
+      # Discuss: If install failed again, worth a 3rd try?
       if install_output.returncode != 0:
-        log(f'■■■ ALKiln Error ALKP0005: 2nd time installing version {action_argument("version")} failed')
+        log(f'🤕 ALKiln ERROR ALKP0005: Error on both attempts to install version {action_argument("version")}:')
         log(install_output.stderr.decode('utf-8'))
         
-  # Always except if is still an error. Will cause failure.
+  # Always throws/excepts if is still an error.
+  # TODO: Create page to display unhandled errors from this.
   install_output.check_returncode()
   
   # If no error thrown by now, log output and succeed
   result = install_output.stdout.decode('utf-8')
-  log('□□□ ALKiln Installation succeeded:')
+  log('💡 ALKiln INFO: ALKiln Installation succeeded:')
   log(result)
 
   background_response(result)
@@ -780,10 +836,12 @@ code: |
 code: |
   did_install = False
 ---
+# Mark `install_failed` as True instead
 code: |
   install_failed = True
   flag_failed_installation = True
 ---
+# The default when requiring `install_failed`
 code: |
   install_failed = False
 ---
@@ -792,7 +850,7 @@ prevent going back: True
 reload: True
 event: wait_for_install
 question: |
-  One sec, installing ALKiln v${version_to_install}
+  One sec, installing ALKiln v${ version_to_install }
 subquestion: |
   <div class="spinner-container d-flex justify-content-center">
   <div class="spinner-border" role="status">
@@ -824,22 +882,29 @@ action buttons:
 code: |
   require_restart_install_timer = False
 ---
+need:
+  - current_datetime
 event: restart_install_timer
 code: |
   require_restart_install_timer = False
   install_start = current_datetime()
 ---
+need:
+  - current_datetime
 code: |
   install_start = current_datetime()
 ---
 ####################################
-# Testing
+# Running tests
 ####################################
 ---
 id: choose project
 need:
+  - install_failed
+  - version_error
   - da_log_more_info
   - worker_log_more_info
+  - get_installed_version
 prevent going back: True
 question: |
   Run ALKiln tests
@@ -856,9 +921,9 @@ subquestion: |
   % endif
   </div>
   
-  Note that this might be a problem with the servers that store ALKiln's code, which are managed by node package manager (npm). The <a href="https://status.npmjs.org/">npm status page</a> might tell you if many npm servers are having trouble.
+  Note that this might be a problem with the servers that store ALKiln's code, which are managed by node package manager (npmjs). The <a href="https://status.npmjs.org/">npmjs status page</a> might tell you if many npmjs servers are having trouble.
   
-  You can still run your tests with the version of ALKiln that is currently installed, **ALKiln v${ get_installed_version() }**. If you want to use a different version of ALKiln, you will have to try again later.
+  You can still run your tests with the version of ALKiln that you already have, **ALKiln v${ get_installed_version() }**. If you want to use a different version of ALKiln, you will have to try again later.
   % else:
   You will run these tests with **ALKiln v${ get_installed_version() }**.
   % endif
@@ -866,7 +931,7 @@ subquestion: |
   <div class="alert alert-warning" markdown="1">
   While tests are running try to avoid:
   
-  - Editing this project
+  - Editing the Project you are testing
   - Saving a python module
   - Pulling or uploading a package with a python module
   - Otherwise causing this server to reload, restart, or stop
@@ -880,30 +945,33 @@ fields:
     choices:
       code: |
         [[ proj, proj ] for proj in get_list_of_projects( user_info().id )]
-  - I want to run all the tests: not_wants_tags
-    datatype: yesno
   - note: |
       You can choose to run only specific tests using [tags](https://assemblyline.suffolklitlab.org/docs/components/ALKiln/writing/#tags) (like `@my_test`) in your test file and putting a [tag expression](https://assemblyline.suffolklitlab.org/docs/components/ALKiln/writing/#tags:~:text=Tag%20expression-,What%20tests%20run%3F,-%40likes_bears) in the field below.
+  - I want to run all the tests: not_wants_tags
+    datatype: yesno
   - "Your [tag expression](https://assemblyline.suffolklitlab.org/docs/components/ALKiln/writing/#tags:~:text=Tag%20expression-,What%20tests%20run%3F,-%40likes_bears)": tag_expression
     disable if: not_wants_tags
-    # It is fine if they leave it blank
+    # It is fine if they leave it blank. This question is for author comfort
     required: False
 continue button label: '<i class="far fa-play-circle"></i> Run tests'
 action buttons:
   - label: Install a new ALKiln version
-    action: do_new
+    action: do_session_no_args
     color: warning
----
-event: do_new
-code: |
-  url_args = {}
-  command('new_session')
-  # Warning: `command('exit', url=interview_url())` Gets "Unable to locate..."
 ---
 code: |
   from docassemble.webapp.files import SavedFile
 
   def get_list_of_projects(user_id):
+    """
+    Return the list of the Projects of a user on this server with the give ID.
+
+    Args:
+        user_id (str): id of an account on this server
+  
+    Returns:
+        list of str: List of the user's Projects
+    """
     playground = SavedFile(user_id, fix=False, section='playground')
     return playground.list_of_dirs()
 ---
@@ -912,6 +980,9 @@ if:
 code: |
   tag_expression = ''
 ---
+need:
+  - tag_expression
+  - project_name
 code: |
   test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
 ---
@@ -921,7 +992,6 @@ id: alkiln-related config vars
 code: |
   alkiln_config_vars = get_config('alkiln') or {}
 ---
-# TODO: Replace `config_vars` with `alkiln_config_vars` everywhere
 need:
   - alkiln_config_vars
 code: |
@@ -931,8 +1001,8 @@ code: |
   dangerous_config_var_names = [var for var in alkiln_config_vars if var in os_env]
   # Discuss: consider creating a list that excludes the current dangerous vars. That more permissive list would allow tests to continue even though the tests wouldn't have all the config vars the author wants. Questionable.
 ---
-# TODO: Use alkiln_config_vars in here instead
-# TODO: Rename `env_vars`.
+# TODO: Carefully try to completely replace `env_vars` with `alkiln_config_vars` or switch their names
+# TODO: Possible to use `alkiln_config_vars` in here instead of getting vars again with `temp_env_vars`?
 if: len(dangerous_config_var_names) == 0
 code: |
   temp_env_vars = get_config('alkiln') or {}
@@ -941,12 +1011,15 @@ code: |
 ---
 id: set custom env vars
 reconsider: True
+need:
+  - project_name
 code: |
   import os
 
   custom_env = dict(
     os.environ,
-    SERVER_URL=f'{url_of("root", _external=True)}',  # Discuss: Remove this req?
+    # Discuss: Remove this req?
+    SERVER_URL=f'{url_of("root", _external=True)}',
     _ORIGIN='playground', _ALKILN_ORIGIN='playground',
     _PROJECT_NAME=project_name, _ALKILN_PROJECT_NAME=project_name,
     _USER_ID=f'{user_info().id}', _ALKILN_USER_ID=f'{user_info().id}',
@@ -955,14 +1028,14 @@ code: |
   )
 ---
 # TODO: Use external custom_env_vars here
+id: run alkiln
+event: run_alkiln
 need:
   - env_vars
   - sources
   - has_started_tests
   - worker_log_link
   - root_path
-id: run alkiln
-event: run_alkiln
 code: |
   import subprocess
   import signal
@@ -970,7 +1043,7 @@ code: |
 
   cmd_exists = has_command("alkiln-run")
   
-  # When the process timesout, chrome is closing, but node isn't for about another 50 seconds. That's shorter than the test, which is good, but I'm not sure why it waits so long.
+  # When the process times out, chrome is closing, but node isn't for about another 50 seconds. That's shorter than the test, which is good, but I'm not sure why it waits so long.
 
   # if statement for idempotency - ensure tests are only run once
   if not has_started_tests:
@@ -984,7 +1057,7 @@ code: |
     SavedFile(user_info().id, fix=True, section='playgroundsources')
 
     sources_arg = f'--sources={ sources }'
-    # log(f'□□□ ALKiP sources path: {sources}')
+    log('💡 ALKiln INFO: sources path: {sources}')
   
     tags = action_argument('tag_expression')
 
@@ -1034,7 +1107,7 @@ code: |
 
       # Get the process id of the subprocess
       test_run_pid = process.pid
-      log( f'□□□ Running ALKiln tests with process ID { test_run_pid }' )
+      log('💡 ALKiln INFO: Running ALKiln tests with process ID { test_run_pid }' )
 
       start_process_wait_time = current_datetime()
       # `.communicate()` `timeout` is in seconds
@@ -1051,21 +1124,22 @@ code: |
         test_output = process.communicate( timeout=max_run_time )
         returncode = process.returncode
       except subprocess.TimeoutExpired:
-        timeout_output = f'■■■ ALKiln Error ALKP0006: the tests run with the pid { test_run_pid } ran for over { date_difference( starting=start_process_wait_time, ending=current_datetime() ).hours } hours. The maximum time allowed is { max_run_time/60/60 } hours. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` key and giving it a different value.'
+        # Example of use of this exception:
+        # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/ef5dd232b0a3557fd4b8e9185883e0ecc6a161bb/docassemble/AssemblyLine/al_document.py#L2842-L2850
+        timeout_output = f'🤕 ALKiln ERROR ALKP0006: the tests run with the pid { test_run_pid } ran for over { date_difference( starting=start_process_wait_time, ending=current_datetime() ).hours } hours. The maximum time allowed is { max_run_time/60/60 } hours. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` section and giving it a different value.'
         log(timeout_output)
       except Exception as error:
-        log('■■■ ALKiln Error ALKP0010: Error while running tests:')
+        log('🤕 ALKiln ERROR ALKP0010: Error while running tests:')
         log(error)
 
     except Exception as test_run_error:
       import traceback
   
       # We get here even when the sub-processes fail
-      log( f'□□□ ALKiP: The test subprocess completed with the returncode { returncode }:' )
-      log(test_run_error)
+      log('💡 ALKiln INFO: The test subprocess completed with the returncode { returncode }:' )
       log("\n".join( traceback.format_exception( test_run_error ) ))
 
-      # Check if the process completed successfully
+      # Throw error if the process (not the tests) failed
       # Discuss: what should behavior here be? Where do we catch it
       # lower down?
       # Discuss: Consolidate failure messages into 1 message
@@ -1077,28 +1151,27 @@ code: |
       # Always make sure subprocess and its children are terminated
       # Always create output of some kind
       
-      # Terminate:
-      # You can test this by not stringifying env vars
+      # Force process to terminate
+      # You can test this by not stringifying `alkiln` env vars
+      # and including a bool value in those env vars
       try:
         if defined("test_run_pid"):
           os.killpg(os.getpgid( test_run_pid ), signal.SIGTERM)
-          # When `.communicate` runs out of time, it doesn't complete
-          # the process, so the process still has to finish (by
-          # dying, in this case). Make sure the process is fully
-          # terminated. Low level interface.
+          # We have to terminate this process ourselves because
+          # when `.communicate` runs out of time, the system doesn't
+          # complete the process itself. Low level interface.
           process.wait()
         else:
-          log('■■■ ALKiln Error ALKP0031: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by interrupted ALKiln installations. It often comes with the message "expected str, bytes or os.PathLike object, not bool". You can try running `rm -rf /var/www/.npm-global/bin` and `rm -rf /var/www/.npm-global/lib`, then restart this interview. To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository.')
+          log('''🤕 ALKiln ERROR: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by a prior interrupted ALKiln installations. It often comes with the message "expected str, bytes or os.PathLike object, not bool". You can try running `rm -rf /var/www/.npm-global/bin` and `rm -rf /var/www/.npm-global/lib` in your server's shell, then restart this interview. To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository.''')
       except ProcessLookupError as already_terminated_error:
+        # An already terminated process is a happy process
         pass
       except Exception as termination_error:
-        log('■■■ ALKiln Error ALKP0011: Error while stopping tests:')
-        log(termination_error)
+        log('🤕 ALKiln ERROR ALKP0011: Error while stopping tests:')
+        log("\n".join( traceback.format_exception( termination_error ) ))
         
-      # Output:
+      # === Output ===
   
-      # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/main/docassemble/AssemblyLine/al_document.py#L1275-L1284
-      # https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/data/questions/compile_bootstrap.yml
       if defined('test_output'):
         stdout = test_output[0].decode('utf-8')
         stderr = test_output[1].decode('utf-8')
@@ -1114,10 +1187,12 @@ code: |
   an error. We hope there is more information on this
   page or in your { worker_log_link }.\n"""
 
-      # Discuss: If return code None, link to logs? Enough links around?
+      # Discuss: If return code None, link to logs? Is that duplicate info?
       output_main = '\n'.join( text for text in [ return_code_msg, showifdef('timeout_output', ''), showifdef('stdout', ''), showifdef('stderr', '') ] if text )
 
-      log(f'□□□ ALKiln test run output:\n{ output_main }' )
+      ## Discuss: This seems like too much to put in the logs, but if things go
+      ## too badly wrong, this might be the only available info from the tests.
+      # log('💡 ALKiln INFO: ALKiln test run output:\n{ output_main }' )
       
       background_response( output_main )
 ---
@@ -1147,10 +1222,8 @@ subquestion: |
   Otherwise, tests might fail and you may have to rerun them.
   </div>
   
-  **Elapsed time: ${ str(test_time.delta) }**[BR]
+  **Elapsed time: ${ str( tests_elapsed_time.delta ) }**[BR]
   (Updates about every 10 seconds depending on your server speed)
-
-# revoke tests task
 action buttons:
   - label: Stop tests early
     action: stop_tests_early
@@ -1168,7 +1241,7 @@ code: |
 reconsider: True
 code: |
   # Deliberately explicit about the end time
-  test_time = date_difference( ending=current_datetime(), starting=test_start_time )
+  tests_elapsed_time = date_difference( ending=current_datetime(), starting=test_start_time )
 ---
 code: |
   test_start_time = current_datetime()
@@ -1182,99 +1255,53 @@ code: |
   test_run_outcome = test_data["outcome"]
   if files_html == None:
     file_problem = True
-  _debug(f'file_problem: { file_problem }')
   run_get_files_html = True
 ---
-# Discuss: Does this absolutely need to be separate? Do we at times
-# want to avoid calling get_files_html()?
 code: |
   file_problem = False
 ---
 need:
- - zip_name_no_ext
- - zip_name
- - root_path
- - get_file_html
- - get_generated_Scenarios_section
- - da_log_more_info
- - logs_more_info
- - no_tests_instructions
- - get_quick_view_header
- - get_scenarios_header
+  - get_top_buttons
+  - get_file_html
+  - get_generated_Scenarios_section
+  - logs_more_info
+  - no_tests_instructions
+  - get_quick_view_header
+  - get_scenarios_header
 code: |
   import os
-  import subprocess
+  # import subprocess
   
-  def get_files_html(folder_name_, folder_path_):
-    '''Return html to show artifacts files and artifacts zip.'''
+  def get_files_html(local_folder_name, local_folder_path):
+    """
+    Return html to show artifacts files and artifacts zip. Discuss: The args
+        may be unnecessary complications.
+
+    Args:
+        local_folder_name (str): name of the artifacts folder
+        local_folder_path (str): path of the artifacts folder
+
+    Returns:
+        dict: Props:
+        - html (str or None): HTML of the files section or None
+        - outcome (str or None): 'failed', 'unexpected', 'passed' or None
+    """
 
     test_run_outcome = None
   
-    if folder_path_ is None:
-      _log( f'■■■ ALKiP Error ALKP0060: error finding artifacts folder at "{ folder_path_ }"' )
+    if local_folder_path is None:
       return {"html": None, "outcome": None}
     
-    html = ''
-    
-    _debug('💡 ALKP0040 ALKiln will try to save the artifacts zip with the name ' + zip_name_no_ext )
-
-    # TODO: Remove zip_name_no_ext. `zip` cmd doesn't need it.
-
-    # cwd controls where the expanded zip's path starts. Every folder beyond
-    # the cwd location will show up in the output of expanding the zip.
-    # zip_name_no_ext "the_zip", folder_name_ "the_folder"
-    # folder_path_ "/tmp/the_folder"
-    _debug(f"""original: zip_process = subprocess.run(['zip', '-r', '-v', { zip_name_no_ext }, { folder_name_ } ], cwd={ root_path }, check=False, capture_output=True)""")
-    zip_process = subprocess.run(['zip', '-r', '-v', f'{ zip_name_no_ext }', f'{ folder_name_ }'], cwd=root_path, check=False, capture_output=True)
-
-    if zip_process.stdout:
-      _debug('💡 ALKiP NOTE ALKP0042: zipped artifacts folder. stdout:')
-      _debug( zip_process.stdout )
-
-    zip_path = get_zip_path()["path"]
-  
-    # Zip section
-    html += '<section class="section zip">\n'
-
-    # Folder path was fine, but unable to make zip
-    if zip_process.returncode != 0:
-      _log( f'■■■ ALKiP Error ALKP0007: error zipping artifacts folder at "{ folder_path_ }" to "{ zip_path }":' )
-      _log(zip_process.stderr.decode("utf-8"))
-      html += f'<span class="alkiln_error">ALKilnInThePlayground was unable to create a zip file for the artifacts. { da_log_more_info }</span>\n'
-
-      # There is technically no reason to stop here since the folder seems
-      # to exist and we can hope to show some output from there.
-  
-    else:
-      _debug(f'ALKP0018 ALKiln saved the artifacts zip file correctly to "{ zip_path }".')
-      
-      _debug(f"""original: zip_da_file.initialize( filename={ zip_name } )\nzip_da_file.copy_into( { zip_path } )""")
-
-      zip_da_file = DAFile()
-      zip_da_file.initialize( filename=zip_name )
-      zip_da_file.copy_into( zip_path )
-      zip_da_file.commit()
-    
-      html += f"""
-        <div class="quick_buttons top">
-          <menu>{ action_button_html(zip_da_file.url_for(), label="Download all files and folders ALKiln created", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }</menu>
-    
-          <nav class="to_console_logs_from_top">
-            <a class="non_da_internal_link btn btn-secondary" href="#console" markdown="1" type="button">:arrows-down-to-line: Jump down to the full console logs</a>
-          </nav>
-        </div>
-      """
-  
-    html += '</section>\n'  # ends zip section
+    html = get_top_buttons()
     
     # collect top-level names and paths.
     top_dirs = []
     top_files = []
     top_other = []
     # A bit faster than other methods, though that doesn't matter much here so far. https://stackoverflow.com/a/62478211/14144258
-    with os.scandir( folder_path_ ) as scan:
+    with os.scandir( local_folder_path ) as scan:
       for dir_item in scan:
-        _debug(f'Scanning { folder_path_ }/{ dir_item.name }')
+        _debug(f'Scanning { local_folder_path }/{ dir_item.name }')
         if dir_item.is_file():
           top_files.append(dir_item)
         elif dir_item.is_dir():
@@ -1429,6 +1456,110 @@ code: |
     
     return { "html": html, "outcome": test_run_outcome }
 ---
+id: top buttons
+need:
+  - get_artifacts_zip_downloader
+code: |
+  import subprocess
+  
+  def get_top_buttons():
+    """
+    Returns:
+          str: the top-most functional buttons HTML for the results page
+    """
+
+    zip_html = get_artifacts_zip_downloader()
+
+    html = f"""
+      <section class="section top_buttons">
+        <div class="quick_buttons top">
+          { zip_html }
+  
+          <nav class="to_console_logs_from_top">
+            <a class="non_da_internal_link btn btn-secondary" href="#console" markdown="1" type="button">:arrows-down-to-line: Jump down to the full console logs</a>
+          </nav>
+        </div>
+      </section>
+    """
+
+    return html
+---
+id: zip section
+need:
+  - zip_name_no_ext
+  - zip_name
+  - root_path
+  - folder_path
+  - folder_name
+  - da_log_more_info
+code: |
+  import subprocess
+  
+  def get_artifacts_zip_downloader():
+    """
+    Returns:
+        str: the zip download button HTML for the artifacts folder
+    """
+  
+    _debug(f"""💡 ALKiln INFO: will try to get the artifacts zip from "{ folder_path }" (in "{ root_path }") and save the artifacts zip with the name "{ zip_name }".""" )
+
+    # TODO: Remove zip_name_no_ext if possible. `zip` cmd doesn't need it.
+
+    zipping_did_error = False
+    try:
+  
+      # cwd controls where the expanded zip's path starts. Every folder beyond
+      # the cwd location will show up in the output of expanding the zip.
+      # zip_name_no_ext ex: "the_zip", folder_path ex: "the_folder"
+      # folder_path ex: "/tmp/the_folder"
+      zip_process = subprocess.run(['zip', '-rv', zip_name_no_ext, folder_name ], cwd=root_path, check=False, capture_output=True)
+
+      # Folder path was fine, but unable to make zip
+      if zip_process.returncode != 0:
+        zipping_did_error = True
+        returncode = zip_process.returncode
+
+        if returncode == 12:
+          _log( f'🤕 ALKiln ERROR: when trying to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }", the zip command was unable to find the file or directory. Return code "{ zip_process.returncode }" ("zip has nothing to do").' )
+        elif returncode == 15:
+          _log( f'🤕 ALKiln ERROR: when trying to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }", the zip command was unable to create a file to write to. Return code "{ zip_process.returncode }".' )
+  
+        else:
+          _log( f'🤕 ALKiln ERROR ALKP0007: error running `zip` command to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }" with return code "{ zip_process.returncode }". stderr:' )
+          _log( zip_process.stderr.decode( "utf-8" ))
+
+    except FileNotFoundError as zip_process_error:
+      zipping_did_error = True
+      _log( f'🤕 ALKiln ERROR: could not find the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
+      import traceback
+      _log("\n".join( traceback.format_exception( zip_process_error ) ))
+      
+    except Exception as zip_process_error:
+      zipping_did_error = True
+      _log( f'🤕 ALKiln ERROR: subprocess errored when ALKilnInThePlayground tried to zip the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
+      import traceback
+      _log("\n".join( traceback.format_exception( zip_process_error ) ))
+
+    if zipping_did_error:
+      return f"""
+        <div class="alkiln_error alert alert-warning">ALKilnInThePlayground was unable to create a zip file for the test artifacts. { da_log_more_info }</div>\n
+      """
+  
+    zip_path = get_zip_path()["path"]
+  
+    if zip_process.stdout:
+      _debug('💡 ALKiln INFO: saved the artifacts zip file correctly to "{ zip_path }". stdout:')
+      _debug( zip_process.stdout )
+
+    zip_da_file = DAFile()
+    zip_da_file.initialize( filename=zip_name )
+    zip_da_file.copy_into( zip_path )
+    zip_da_file.commit()
+  
+    return f"""
+        <menu>{ action_button_html(zip_da_file.url_for(), label="Download all files and folders that ALKiln created", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }</menu>
+    """
+---
 id: no tests instructions
 template: no_tests_instructions
 content: |
@@ -1454,7 +1585,6 @@ objects:
   - sections: DAList.using( object_type=DAObject, complete_attribute="header" )
 ---
 id: html section for generated randomized Scenarios
-# Discuss: Make accordion close button jump to top of accordion
 need:
   - get_feature_html
   - menu_download_n_copy
@@ -1468,8 +1598,13 @@ code: |
   
   def get_generated_Scenarios_section( dir ):
     """
-    Return the html for an expandable element with the list of
-        generated files to open in the browser or return an apology.
+    Return the HTML for the list of generated files or a missing files msg.
+
+    Args:
+        dir (str): The dir that holds the new .feature files
+
+    Returns:
+        str: the HTML for the list of generated files or a missing files msg.
     """
     gen = sections[ sections.number_gathered() ]
 
@@ -1488,7 +1623,6 @@ code: |
     for gen_root_path, dir_names, file_names in os.walk(f'{dir.path}'):
       file_names.sort()
       for file_name in file_names:
-        _debug(f'gen_root_path, dir_names, file_name: {[gen_root_path, dir_names, file_name]}')
         path = os.path.abspath(os.path.join(gen_root_path, file_name))
         html += get_feature_html( path, file_name )
   
@@ -1504,7 +1638,7 @@ comment: |
     gen.zip_name = f"{ gen.safe_name }_scenarios_generated_by_alkiln.zip"
     gen.zip_pre_path = f"{ root_path }/{ gen.zip_name }"
     
-    _debug(f'💡 ALKP0050 ALKiln will get all the generated tests at "{ folder_path }", zip them, and try to save that zip at "{ gen.zip_pre_path }"' )
+    _debug(f'💡 ALKiln INFO: ALKiln will get all the generated tests at "{ folder_path }", zip them, and try to save that zip at "{ gen.zip_pre_path }"' )
     _debug(f"""gen zip_process = subprocess.run(['zip', '-rv', { gen.zip_pre_path }, '*' ], cwd={ folder_path }, check=False, capture_output=True)""" )
 
     # Discuss: Folder for all tmp files would be more conceptually clear
@@ -1521,24 +1655,24 @@ comment: |
     )
 
     if zip_process.stdout:
-      _debug('💡 ALKiP NOTE ALKP0052: zipped the generated scenarios folder. stdout:')
+      _debug('💡 ALKiln INFO: zipped the generated scenarios folder. stdout:')
       _debug( zip_process.stdout )
 
     zip_data = get_any_zip_path( gen.zip_pre_path )
-    gen.zip_path = zip_data["path"]
+    gen.zip_path = zip_data[ "path" ]
     _debug(f'gen.zip_path: { gen.zip_path }')
 
     # Folder path was fine, but unable to make zip
     if zip_process.returncode != 0 or zip_data["problem"] != "":
-      _log( f'■■■ ALKiP Error ALKP0053: error zipping generated scenarios at "{ folder_path }" to { gen.zip_path }:' )
+      _log( f'🤕 ALKiln ERROR: error zipping generated scenarios at "{ folder_path }" to "{ gen.zip_path }":' )
   
     if zip_process.returncode != 0:
       _log( zip_process.stderr.decode("utf-8") )
-    elif zip_data["problem"] != "":
-      _log( zip_data["problem"] )
+    elif zip_data[ "problem" ] != "":
+      _log( zip_data[ "problem" ] )
   
     else:
-      _debug(f"""ALKP0054 ALKiln saved the generated scenarios zip file correctly to "{ gen.zip_path }"\n gen.da_zip.initialize( filename={ gen.zip_name } )\ngen.da_zip.copy_into( { gen.zip_path } )""")
+      _debug(f"""💡 ALKiln INFO: ALKiln saved the generated scenarios zip file correctly to "{ gen.zip_path }"\n gen.da_zip.initialize( filename={ gen.zip_name } )\ngen.da_zip.copy_into( { gen.zip_path } )""")
       gen.da_zip = DAFile()
       gen.da_zip.initialize( filename=gen.zip_name )
       gen.da_zip.copy_into( gen.zip_path )
@@ -1554,7 +1688,8 @@ need:
 code: |
   def get_quick_view_header():
     """
-    Return the html for the header of the "root" level files section.
+    Returns:
+        str: the HTML for the header of the "root" level files section.
     """
     quick = sections[ sections.number_gathered() ]
     quick.heading = "Results quick view"
@@ -1568,14 +1703,15 @@ need:
 code: |
   def get_scenarios_header():
     """
-    Return the html for the header of the Scenarios outputs section.
+    Returns:
+        str: the HTML for the header of the Scenarios outputs section.
     """
     scenarios = sections[ sections.number_gathered() ]
     scenarios.heading = "Scenarios"
     scenarios.id = "scenarios_header"
     return sticky_h2_header( scenarios )
 ---
-id: feature files html
+id: html for one generated feature file
 need:
   - very_safe_name
   - copier
@@ -1588,7 +1724,16 @@ code: |
   
   def get_feature_html( path, file_name ):
     """
+    Return the HTML for one generated feature file
+  
     Note: Code style is based on a future goal to remove functions
+
+    Args:
+        path (str): path to the feature file
+        file_name (str): name of the feature file
+  
+    Returns:
+        str: HTML for one generated feature file
     """
   
     feat = sections[ sections.number_gathered() ]
@@ -1613,9 +1758,18 @@ code: |
 
     return html
 ---
-id: accordion content for a file
+id: accordion content for a copyable file
 code: |
   def accordion_content_for_file( accorder ):
+    """
+    Args:
+        accorder (DAObject): Data for the desired element. Attribs:
+        - id (str)
+        - da_file (DAFile)
+  
+    Returns:
+        str: HTML for a Bootstrap accordion contents with copyable text
+    """
     return f"""<div id="{ accorder.id }" class="accordion-collapse collapse" aria-labelledby="{ accorder.id }">
       <pre class="accordion-body visible_text">{ accorder.da_file.slurp(auto_decode=False).decode("utf-8") }</pre>
     </div>"""
@@ -1632,6 +1786,15 @@ code: |
   import os
   
   def get_console_html( artifacts_name ):
+    """
+    Returns HTML of the tests' console output section with copyable text.
+
+    Args:
+        artifacts_name (str): Name of the artifacts folder
+
+    Returns:
+        str: HTML of the tests' console output section with copyable text.
+    """
 
     safe_name = very_safe_name( artifacts_name )
 
@@ -1655,14 +1818,12 @@ code: |
     console.to_top = to_section_top_button( console.jump_id )
 
     html = f"""
-    <div class="console_output">
-      <section id="console" class="section alkiln_copy">
-        <div id="{ console.jump_id }" class="jump_destination"></div>
-        { sticky_h2_header( console ) }
-        <pre class="visible_text">{ str( console_full_text ).strip() }</pre>
-        { console.to_top }
-      </section>
-    </div>
+    <section id="console" class="section console_output alkiln_copy">
+      <div id="{ console.jump_id }" class="jump_destination"></div>
+      { sticky_h2_header( console ) }
+      <pre class="visible_text">{ str( console_full_text ).strip() }</pre>
+      { console.to_top }
+    </section>
     """
 
     return html
@@ -1688,8 +1849,19 @@ content: |
 ---
 id: non-feature files
 # TODO: do something safer with uncategorized files
+# TODO: move this up closer to the rest of the file html code
+need:
+  - space_to_underscore
 code: |
   def get_file_html(name='', path=''):
+    """
+    Args:
+        name (str): Name of the file.
+        path (str): Path to the file.
+
+    Returns:
+        str: HTML for one file
+    """
     # Show a DAFile for each file
     da_file = DAFile()
     da_file.initialize(filename=f'{space_to_underscore(name)}')
@@ -1732,8 +1904,9 @@ need:
   - folder_path
   - get_zip_path
 code: |
-  # Let this block run regardless just in case it can manage to clean
-  # something up
+  # Note: Ensure this block run regardless of the outcome just in case it
+  # can manage to clean something up. Avoid erroring. These steps aren't
+  # crucial.
   
   zip_path = get_zip_path()["path"]
   
@@ -1741,30 +1914,39 @@ code: |
   try:
     os.remove( zip_path )
   except Exception as error:
-    _log(f'🖊️ ALKiln Note ALKP0008: skipped removing old "{ zip_path }"')
+    _log(f'🖊️ ALKiln NOTE ALKP0008: skipped removing old "{ zip_path }". Message:')
     _debug(error)
   
   import shutil
   try:
     shutil.rmtree( folder_path )
   except Exception as error:
-    _log(f'🖊️ ALKiln Note ALKP0009: skipped removing "{ folder_path }"')
+    _log(f'🖊️ ALKiln NOTE ALKP0009: skipped removing "{ folder_path }". Message:')
     _debug(error)
   
   # https://stackoverflow.com/a/32949415/14144258
   import glob
-  # Remove leftover puppeteer stuff if it exists (e.g. if the user
-  # stopped the tests early)
-  # https://github.com/puppeteer/puppeteer/issues/6414
-  sub_folders_list = glob.glob('tmp/puppeteer_dev_chrome_profile*')
-  for sub_folder in sub_folders_list:
-    shutil.rmtree(sub_folder)
+  try:
+    # Remove leftover puppeteer stuff if it exists (e.g. if the user
+    # stopped the tests early)
+    # https://github.com/puppeteer/puppeteer/issues/6414
+    sub_folders_list = glob.glob('tmp/puppeteer_dev_chrome_profile*')
+    for sub_folder in sub_folders_list:
+      shutil.rmtree(sub_folder)
+  except Exception as error:
+    _debug(f'🖊️ ALKiln NOTE: skipped removing puppeteer leftovers. Maybe there were none. Message:')
+    _debug(error)
   
   remove_tmp_files = True
 ---
 event: show_output
 need:
   - logs_more_info
+  - test_run_outcome_template
+  - metadata_template
+  - artifacts_errored
+  - file_problem
+  - test_output_template
 prevent going back: True
 question: |
   ALKiln output
@@ -1804,17 +1986,31 @@ subquestion: |
   </div>
 
   ${ "" if remove_tmp_files else "" }
-buttons:
-  - Run new tests: exit
-    url: ${ interview_url(new_session=1, skip_install="true") }
+action buttons:
+  - label: Run new tests
+    action: do_skip_install_session
     color: warning
-  - Install a new ALKiln version: do_new
+  - label: Install a new ALKiln version
+    action: do_session_no_args
     color: warning
+---
+event: do_skip_install_session
+code: |
+  # Unable to pass kwarg `url` to 'new_session'
+  url_args["skip_install"] = "true"
+  command('new_session')
+---
+event: do_session_no_args
+code: |
+  # Unable to pass kwarg `url` to 'new_session'
+  url_args["skip_install"] = "false"
+  command('new_session')
+  # Warning: `command('exit', url=interview_url())` Gets "Unable to locate..."
 ---
 code: |
   test_run_outcome = None
 ---
-# TODO: Add ALKiP-sourced message about updating ALKiln
+# Discuss: Add ALKiP-sourced message about updating ALKiln
 # Discuss: add a test count—passed/failed out of total
 template: test_run_outcome_template
 content: |
@@ -1851,9 +2047,8 @@ content: |
   % endif
   % endif
 ---
-# Discuss: add date/time of test run? May get muddled unless we
-# can work out why the final output page sometimes regenerates
-# Discuss: grid with left-aligned and right aligned
+# Discuss: If we've thoroughly dealt with the final output page regeneration
+# bug, add date/time of test run? Is the info in the console output enough?
 template: metadata_template
 content: |
   <section id="metadata" class="section metadata">
@@ -1939,53 +2134,62 @@ code: |
   temp_config_path = get_existing_path( "runtime_config.json" )
   if temp_config_path is None:
     config_path_problem = 'No "runtime_config.json" file exists.'
-    _log(f'🤕 ALKiP Error ALKP0033: { config_path_problem }')
+    _log(f'🤕 ALKiln ERROR: { config_path_problem }')
   config_path = temp_config_path
 ---
 id: default config_path_problem
 code: |
   config_path_problem = ''
 ---
-# We need `folder_name` in order to try various `folder_path` values. We need various values for compatibility with old ALKiln versions. See `get_existing_path()` notes
+# We get the folder_path by using ALKiln's runtime_config.json
+# folder_path tries different locations till it finds the real one in order to stay compatibile with old ALKiln versions. See `get_existing_path()` notes. We use `folder_path` to get the artifacts folder to make zip names, zips, and to eventually delete the folder.
 id: artifacts folder name
 need:
   - config_path
+  - get_existing_path
 code: |
   import os
   
   if config_path is None:
-    temp_folder_name = 'no config'
+    folder_temp_name = 'no config'
 
   else:
     with open( config_path ) as config_text:
 
       try:
-        temp_folder_name = json.load( config_text ).get('artifacts_path', 'no value')
+        folder_temp_name = json.load( config_text ).get('artifacts_path', 'no value')
   
       except Exception as config_load_error:
-        temp_folder_name = 'no json'
-        _log(f'🤕 ALKiP Error ALKP0035: Error loading json from config file at "{ config_path }":')
+        folder_temp_name = 'no json'
+        _log(f'🤕 ALKiln ERROR: Error loading json from config file at "{ config_path }":')
         _log( config_load_error )
   
-      if temp_folder_name == 'no value':
-        _log(f'🤕 ALKiP Error ALKP0034: Config file at "{ config_path }" has no "artifacts_path" value.')
+      if folder_temp_name == 'no value':
+        _log(f'🤕 ALKiln ERROR: Config file at "{ config_path }" has no "artifacts_path" value.')
 
-  _debug(f'temp_folder_name: { temp_folder_name }')
-  root_path = os.path.dirname( temp_folder_name )
-  _debug(f'root_path: { root_path }')
-  folder_name = os.path.basename( temp_folder_name )
-  _debug(f'folder_name: { folder_name }')
----
-# folder_path tries different locations till it finds the real one in order to stay compatibile with old ALKiln versions. See `get_existing_path()` notes. We use `folder_path` to get the artifacts folder to make zips and to delete folder.
-need:
-  - get_existing_path
-  - folder_name
-code: |
-  temp_folder_path = get_existing_path( dir_name=folder_name )
-  if temp_folder_path is None:
+  folder_temp_path = get_existing_path( dir_name=folder_temp_name )
+  if folder_temp_path is None:
     folder_path_problem = f'Unable to find artifacts folder at "{ folder_name }".'
-    _log(f'🤕 ALKiP Error ALKP0039: { folder_path_problem }')
-  folder_path = temp_folder_path
+    _log(f'🤕 ALKiln ERROR: { folder_path_problem }')
+
+  root_path = os.path.dirname( folder_temp_path )
+  folder_name = os.path.basename( folder_temp_path )
+  folder_path = folder_temp_path
+  
+  import os
+  cwd = os.getcwd()
+  _debug(f"""cwd: { cwd }, root_path: { root_path }, folder_name: { folder_name }, folder_path: { folder_path }""")
+---
+# # folder_path tries different locations till it finds the real one in order to stay compatibile with old ALKiln versions. See `get_existing_path()` notes. We use `folder_path` to get the artifacts folder to make zips and to delete folder.
+# need:
+#   - get_existing_path
+#   - folder_name
+# code: |
+#   folder_temp_path = get_existing_path( dir_name=folder_name )
+#   if folder_temp_path is None:
+#     folder_path_problem = f'Unable to find artifacts folder at "{ folder_name }".'
+#     _log(f'🤕 ALKiln ERROR: { folder_path_problem }')
+#   folder_path = folder_temp_path
 ---
 id: default folder_path_problem
 code: |
@@ -1997,7 +2201,6 @@ need:
   - very_safe_name
   - folder_name
 code: |
-  _debug( f"very_safe_name( folder_name ): {very_safe_name( folder_name )}" )
   zip_name_no_ext = very_safe_name( folder_name )
 ---
 # Need zip_name to avoid duplicating adding ".zip" to get
@@ -2005,7 +2208,6 @@ code: |
 need:
   - zip_name_no_ext
 code: |
-  _debug( f"zip_name_no_ext .zip: { zip_name_no_ext }.zip" )
   zip_name = f"{ zip_name_no_ext }.zip"
 ---
 need:
@@ -2013,39 +2215,68 @@ need:
 code: |
   def get_zip_path():
     """
-    Confirm the existence of the zip and get its true name. Alternatively,
-    explain what went wrong.
+    Confirm the existence of the artifacts folder zip file and get its true
+        name. Alternatively, explain what went wrong.
   
     Example use: Put contents into the DAFile once the zip is stored wherever
-    it is stored.
+        it is stored.
+
+    Returns:
+        dict: Props:
+        - path (str): The full zip file path or None.
+        - problem (str): Explanation of what went wrong or empty str.
     """
     zip_path_problem = ''
     zip_path = get_existing_path( file_name=zip_name )
     if zip_path is None:
       zip_path_problem = f'Unable to find a file called "{ zip_name }".'
-      _log(f'🤕 ALKiP Error ALKP0041: { zip_path_problem }')
-    _debug( f"zip_path: { zip_path }" )
+      _log(f'🤕 ALKiln ERROR: { zip_path_problem }')
     return { "path": zip_path, "problem": zip_path_problem }
 ---
 code: |
-  def get_any_zip_path( proposed_name ):
+  def get_any_zip_path( zip_name ):
+    """
+    Confirm the existence of any zip file and get its true name.
+        Alternatively, explain what went wrong.
+  
+    Args:
+        zip_name (str): Name of zip file
+
+    Returns:
+        dict: Props:
+        - path (str): The full zip file path or None.
+        - problem (str): Explanation of what went wrong or empty str.
+    """
     a_zip_path_problem = ""
-    a_zip_path = get_existing_path( file_name=proposed_name )
+    a_zip_path = get_existing_path( file_name=zip_name )
     if a_zip_path is None:
-      a_zip_path_problem = f'Unable to find a file called "{ proposed_name }".'
-      _log(f'🤕 ALKiP Error ALKP0051: { a_zip_path_problem }')
-    _debug( f"a_zip_path: { a_zip_path }" )
+      a_zip_path_problem = f'Unable to find a file called "{ zip_name }".'
+      _log(f'🤕 ALKiln ERROR: { a_zip_path_problem }')
     return { "path": a_zip_path, "problem": a_zip_path_problem }
 ---
 # Older versions of ALKiln's config named relative paths
 # Newer versions have absolute paths
 code: |
   def get_existing_path( dir_name=None, file_name=None ):
+    """
+    Given one of `dir_name` or `file_name`, look for the item in the file
+        system. If found, return its full path. Otherwise return None.
+
+    Rationale: Older versions of ALKiln's config named relative paths. Newer
+        versions have absolute paths. We are attempting to support both.
+  
+    Args:
+        (optional) dir_name (str): Name or path of dir to look for
+        (optional) file_name (str): Name or path of file to look for
+
+    Returns:
+        str or None: A full path or None
+    """
     if dir_name != None:
       return get_existing_dir_path( dir_name )
     if file_name != None:
       return get_existing_file_path( file_name )
-    _debug("🖊️ ALKP0036: `get_existing_path` got no valid arguments")
+    _debug("🖊️ ALKiln NOTE: `get_existing_path` got no valid arguments")
     return None
 ---
 need:
@@ -2055,6 +2286,15 @@ code: |
   
   def get_existing_dir_path( dir_name ):
     """
+    Return the path of the requested directory. Try to find it using different
+    root paths to be backwards compatible with old versions of ALKiln. If it
+    doesn't exist at any of those locations, return None.
+  
+    Args:
+        dir_name (str): Name or path of dir to look for
+
+    Returns:
+        str or None: A full path or None
     """
     # if "/tmp/the_dir"
     if os.path.exists( dir_name ):
@@ -2068,7 +2308,7 @@ code: |
     if os.path.exists(f'/tmp/{ dir_name }'):
       return f'/tmp/{ dir_name }'
 
-    _log(f'🖊️ ALKP0037: Found no "{ dir_name }", "{ root_path }/{ dir_name }", or "/tmp/{ dir_name }" directory')
+    _log(f'🖊️ ALKiln NOTE: Found no "{ dir_name }", "{ root_path }/{ dir_name }", or "/tmp/{ dir_name }" directory')
     return None
 ---
 need:
@@ -2077,6 +2317,17 @@ code: |
   import os
   
   def get_existing_file_path( file_name ):
+    """
+    Return the path of the requested file. Try to find it using different
+    root paths to be backwards compatible with old versions of ALKiln. If it
+    doesn't exist at any of those locations, return None.
+  
+    Args:
+        file_name (str): Name or path of file to look for
+
+    Returns:
+        str or None: A full path or None
+    """
   
     if os.path.isfile( file_name ):
       return file_name
@@ -2085,7 +2336,7 @@ code: |
     if os.path.isfile(f'/tmp/{ file_name }'):
       return f'/tmp/{ file_name }'
   
-    _log(f'🖊️ ALKP0038: Found no "{ file_name }", "{ root_path }/{ file_name }", or "/tmp/{ file_name }" file')
+    _log(f'🖊️ ALKiln NOTE: Found no "{ file_name }", "{ root_path }/{ file_name }", or "/tmp/{ file_name }" file')
     return None
 ---
 # Buttons
@@ -2094,15 +2345,37 @@ need:
   - action_button_html
 code: |
   def download_file_button( url ):
+    """
+    Return the HTML to download a file.
+  
+    Avoid new lines around the element to prevent extra spacing in the DOM.
+  
+    Args:
+        url (str): url of the file this link will download.
+
+    Returns:
+        str: HTML of the download button.
+    """
     return f"""<div class="download functional_button_container">
       <a download class="btn btn-secondary download_button" title="Download file" type="button" target="_blank" href="{ url }"><i class="fas fa-download"></i></a>
       </div>"""
 ---
-# TODO: Discuss: Repurpose this for artifacts zip and possible future use with Scenario folders, etc?
+# Discuss: Repurpose this for artifacts zip and possible future use with Scenario folders, etc?
 need:
   - action_button_html
 code: |
   def download_zip_button( url ):
+    """
+    Return the HTML to download a zip file.
+  
+    Avoid new lines around the element to prevent extra spacing in the DOM.
+  
+    Args:
+        url (str): url of the zip this link will download.
+
+    Returns:
+        str: HTML of the download button.
+    """
     return f"""<div class="download">
       <a download class="btn btn-secondary download_button" title="Download all" type="button" target="_blank" href="{ url }"><i class="fas fa-file-zipper"></i> Download all</a>
       </div>"""
@@ -2112,6 +2385,18 @@ need:
   - jumper_bottom_suffix
 code: |
   def to_section_bottom_button( jump_down_prefix ):
+    """
+    Return HTML for a nav element that links to the bottom of a section.
+
+    Avoid new lines around the element to prevent extra spacing in the DOM.
+
+    Args:
+        jump_down_prefix (str): A prefix for the href attribute that
+          identifies the target at the section's bottom.
+
+    Returns:
+        str: HTML for the navigation element.
+    """
     return f"""<nav class="jump jump_to_bottom_container functional_button_container">
         <a id="{ jump_down_prefix }_down_jumper" title="Go to the bottom of the section" class="jump_to_bottom btn btn-secondary" type="button" href="#{ jump_down_prefix }{ jumper_bottom_suffix }"><i class="fas fa-arrows-down-to-line"></i></a>
       </nav>"""
@@ -2121,6 +2406,17 @@ need:
   - jumper_bottom_suffix
 code: |
   def to_section_top_button( jump_up_id ):
+    """
+    Return HTML for a nav element that links to the top of a section.
+
+    Avoid new lines around the element to prevent extra spacing in the DOM.
+
+    Args:
+        jump_up_id (str): id of the target at the section's top.
+
+    Returns:
+        str: HTML for the navigation element.
+    """
     return f"""
     <footer>
       <nav class="jump jump_to_top_container functional_button_container">
@@ -2137,6 +2433,15 @@ code: |
 id: very strict name sanitization
 code: |
   def very_safe_name( uncertain_str ):
+    """
+    Sanitize a string by replacing unsafe characters with underscores.
+
+    Args:
+        uncertain_str (str): Possibly unsafe input string.
+
+    Returns:
+        str: A string with only alphanumeric chars and underscores.
+    """
     return re.sub(r"[^A-z0-9_]", "_", uncertain_str)
 ---
 ---
@@ -2144,19 +2449,28 @@ id: check command existence
 code: |
   import os
   def has_command( bin_name ):
+    """
+    Returns whether a command named by `bin_name` exists in this environment.
+
+    Args:
+        bin_name (str): Name of the command
+
+    Returns:
+        bool: True if the command exists. Otherwise False.
+    """
     cmd_exists = os.path.isfile(f"/var/www/.npm-global/bin/{ bin_name }")
-    _debug(f"{ bin_name } exists? { cmd_exists }")
     return cmd_exists
 ---
 ---
 code: |
-  import time
-  def timey():
-    return time.time()
----
----
-code: |
   def _log( to_log, where="log" ):
+    """
+    Logs `to_log` to the desired location and the console.
+
+    Args:
+        to_log (str): Message to log.
+        where (str): A valid 2nd argument to docassemble `log()`. Ex: 'console'
+    """
     log( to_log, where )
     if where != "console":
       log( to_log, "console" )
@@ -2166,11 +2480,19 @@ need:
   - debugging
 code: |
   def _debug( to_log, where="log" ):
+    """
+    Logs the object representation or the string of `to_log` to the desired
+        location and the console if the debug flag is on.
+
+    Args:
+        to_log (str): Value to log.
+        where (str): A valid 2nd argument to docassemble `log()`. Ex: 'console'
+    """
     if debugging:
       try:
-        log( repr(to_log), where )
+        log( repr( to_log ), where )
         if where != "console":
-          log( repr(to_log), "console" )
+          log( repr( to_log ), "console" )
       except:
         try:
           log( to_log, where )
