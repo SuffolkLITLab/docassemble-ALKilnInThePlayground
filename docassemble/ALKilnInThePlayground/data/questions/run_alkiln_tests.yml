@@ -1270,7 +1270,6 @@ need:
   - get_scenarios_header
 code: |
   import os
-  # import subprocess
   
   def get_files_html(local_folder_name, local_folder_path):
     """
@@ -1904,7 +1903,7 @@ need:
   - folder_path
   - get_zip_path
 code: |
-  # Note: Ensure this block run regardless of the outcome just in case it
+  # TODO: Ensure this block runs regardless of the outcome just in case it
   # can manage to clean something up. Avoid erroring. These steps aren't
   # crucial.
   
@@ -2179,17 +2178,6 @@ code: |
   import os
   cwd = os.getcwd()
   _debug(f"""cwd: { cwd }, root_path: { root_path }, folder_name: { folder_name }, folder_path: { folder_path }""")
----
-# # folder_path tries different locations till it finds the real one in order to stay compatibile with old ALKiln versions. See `get_existing_path()` notes. We use `folder_path` to get the artifacts folder to make zips and to delete folder.
-# need:
-#   - get_existing_path
-#   - folder_name
-# code: |
-#   folder_temp_path = get_existing_path( dir_name=folder_name )
-#   if folder_temp_path is None:
-#     folder_path_problem = f'Unable to find artifacts folder at "{ folder_name }".'
-#     _log(f'🤕 ALKiln ERROR: { folder_path_problem }')
-#   folder_path = folder_temp_path
 ---
 id: default folder_path_problem
 code: |
