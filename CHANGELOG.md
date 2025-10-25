@@ -54,6 +54,16 @@ Format:
    - Copy button for individual randomized files and console output
    - Buttons to jump to the bottom and top of the console output
    - Download buttons for individual randomized files and console output
+- Allow author to skip the ALKiln version install screen to just run new tests
+- Add metadata to the interview on the "My interviews" list page that includes the name of the Project and the tag expression. See [#49](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/59).
+- Handles more types of errors
+- Added the `alkip_debug` key to the known `alkiln` config options to allow an author to see more detailed logs from AKLilnInThePlayground itself.
+
+### Changed
+- Clarify interview language
+
+### Fixed
+- "Run new tests" button was deleting the current interview from the Interviews list
 
 ## [1.3.1] - 2024-02-25
 

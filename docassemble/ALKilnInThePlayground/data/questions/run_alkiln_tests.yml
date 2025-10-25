@@ -1,5 +1,4 @@
 # TODO: When offline, skip the install ALKiln page (except when they have no ALKiln installed). Leave button on other pages to install another version, but pressing that button should somehow show the user that they can't install a different ALKiln version when they're offline.
-# TODO: In "current interviews" page, clarify the nature of the specific test run. Use `set_parts()` to set the interview title based on the project that was tested and subtitle based on the date and time
 # TODO: Reduce number of functions into plain blocks or events. Incidentally, that will allow avoiding the complex return value for getting the html.
 # TODO: Add codes to log messages.
 # TODO: It's unclear that the purpose of the link below a file is to download the file.
@@ -8,15 +7,11 @@
 # TODO: Explore alkiln_config_vars vs. env_vars vs. cusotm_env_vars vs. dangerous_conf...
 # TODO: Guard function calls for functions that are only used once with a flag. That will help us find where undefined variables are causing functions to be run repeatedly.
 # TODO: There is a box shadow above accordion items that hides the gap between the accordion item and the header above it. That's slow. Instead, use a new element created just for that purpose.
-# TODO: Clean up unused code, add doc strings
-# TODO: Replace `log` with `_log` or `_debug` except in background actions
 # TODO: replace `raise`s with error screens
 # TODO: Add more ids, including for code blocks
 # Discuss: Show the user's username to them? Not great for recording anonymized runs through the interview, but it would put the information front and center. People have gotten confused before when exploring other user's sessions and, I believe, Projects.
 # Discuss: Allow authors to run tests in other people's Playgrounds when they have permissions to open sessions and Playgrounds of other users while they are exploring those Playgrounds.
 # Research: exactly how do ids on code blocks affect the cache
-
-# Closes: #3, https://github.com/SuffolkLITLab/ALKiln/issues/1017, +
 
 # NOTES
 # Logs emojis: 🖊️ 🤕 💡
