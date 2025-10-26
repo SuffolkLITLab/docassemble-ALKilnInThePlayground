@@ -1,0 +1,88 @@
+---
+id: generate randomized tests
+need:
+  - has_command
+  - _log
+  - _debug
+  - sources
+  - generation_errored
+code: |
+  import subprocess
+
+  # Get this now to avoid idempotency problems
+  setup_outputs
+  custom_env
+
+  setup_stage = 'generate'
+  generation_error_msgs = []
+  
+  # In case we need them later
+  generation_exception_message = f"""🤕 ALKiln ERROR: While generating randomized ".feature" files, ALKiln ran into an error we have not seen before."""
+  generation_stderr_message = f"""🤕 ALKiln ERROR: Errored while trying to generate randomized ".feature" files."""
+  
+  has_started_generation = True
+
+  # Gatekeeper
+  bin_name = "alkiln-generate"
+  gen_cmd_exists = has_command( bin_name )
+  if not gen_cmd_exists:
+    no_bin_msg = f"🖊️ ALKiln NOTE: The '{ bin_name }' command doesn't exist in this version of ALKiln"
+    _debug( no_bin_msg )
+    generate_constrained_random_tests_status = 'nonexistent'
+
+  else:
+    _debug(f"💡 ALKiln INFO: The '{ bin_name }' command exists.")
+  
+    generation_subprocess = None
+    try:
+      generation_subprocess = subprocess.run(
+        [
+          f'/var/www/.npm-global/bin/{ bin_name }'
+          , f'--sources={ sources }'
+        ],
+        check=False,
+        capture_output=True,
+        env=custom_env,
+        cwd='/tmp'
+      )
+    
+    except Exception as generation_error:
+      import traceback
+      generation_errored = True
+      _log( generation_exception_message )
+      _log( "\n".join( traceback.format_exception( generation_error ) ) )
+      generation_error_msgs.extend([ generation_exception_message, generation_error ])
+      # Discuss: Should we `raise`? Should we stop? Keep going?
+      
+    if generation_subprocess and generation_subprocess.returncode != 0:
+      generation_errored = True
+      generation_stderr = generation_subprocess.stderr.decode('utf-8')
+      _log( generation_stderr_message )
+      _log( generation_stderr )
+      generation_error_msgs.extend([ generation_stderr_message, generation_stderr ])
+    
+    if generation_subprocess and generation_subprocess.stdout.decode('utf-8'):
+      # stdouts were actually created before the errors happened
+      setup_outputs.append( generation_subprocess.stdout.decode('utf-8') )
+    setup_outputs.extend( generation_error_msgs )
+
+    generate_constrained_random_tests_status = 'done'
+---
+id: default started generation value
+code: |
+  has_started_generation = False
+---
+id: default generation errored value
+code: |
+  generation_errored = False
+---
+if: |
+  has_started_generation
+code: |
+  generate_constrained_random_tests_status = 'repeated'
+---
+if: |
+  artifacts_folder_and_runtime_config_final_status == 'nonexistent' or artifacts_errored or validation_errored
+code: |
+  generate_constrained_random_tests_status = 'skipped'
+---
