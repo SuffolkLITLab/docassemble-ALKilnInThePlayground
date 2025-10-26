@@ -40,7 +40,7 @@ features:
   javascript:
     - alkiln_notifications.js
     - alkiln_copy_button.js
-    - nav_bar_based_css.js
+    - dynamic_css_vars.js
     - accordion_collapse_nav.js
 ---
 mandatory: True
