@@ -177,7 +177,7 @@ id: not logged in
 question: |
   You must log in to run ALKiln tests
 subquestion: |
-  To test a Project with ALKiln In The Playground, you must log into the developer account that contains that Project.
+  To test a Project with ALKilnInThePlayground, you must log into the developer account that contains that Project.
 buttons:
   Log into this server: signin
 ---
@@ -351,7 +351,7 @@ question: |
   Unable to install ALKiln
 subquestion: |
   <div class="alert alert-danger">
-  Unfortunately ALKiln In The Playground is unable to install ALKiln right now. ${ npm_connection_msg }
+  Unfortunately ALKilnInThePlayground is unable to install ALKiln right now. ${ npm_connection_msg }
   </div>
 
   It also looks like you either don't have ALKiln installed yet or perhaps a previous installation of ALKiln got messed up. For example, someone may have started installing a version and the installation got interrupted at an unfortunate time.
@@ -458,19 +458,19 @@ code: |
     try_later = "To install any ALKiln version you might have to try again later."
     we_cant_help = "The ALKiln team is unable to help with this problem."
 
-    connection_msg = "ALKiln In The Playground was unable to connect to the servers that store ALKiln."
+    connection_msg = "ALKilnInThePlayground was unable to connect to the servers that store ALKiln."
   
     try:
       response = requests.get(url, timeout=timeout)
       # response.raise_for_status()  # Don't raise an error
 
       if response.status_code >= 400 and response.status_code < 500:
-        connection_msg = f"ALKiln In The Playground sent an incorrect request to the servers that store ALKiln and got a { response.status_code } response code. Please get in touch with the ALKiln developers."
+        connection_msg = f"ALKilnInThePlayground sent an incorrect request to the servers that store ALKiln and got a { response.status_code } response code. Please get in touch with the ALKiln developers."
         _log(f"🤕 ALKiln ERROR: { connection_msg }")
         _log( traceback.format_exc() )
   
       if response.status_code >= 500 and response.status_code < 600:
-        connection_msg = f"The servers that store the ALKiln package were unavailable. ALKiln In The Playground got a { response.status_code } response code. { try_later }"
+        connection_msg = f"The servers that store the ALKiln package were unavailable. ALKilnInThePlayground got a { response.status_code } response code. { try_later }"
         _log(f"🤕 ALKiln ERROR: { connection_msg }")
         _log( traceback.format_exc() )
   
@@ -483,17 +483,17 @@ code: |
       # Discuss: More detailed explanations have more info, but are a possible
       #     rabbit hole for the authors:
       #     "ALKiln is stored on a third-party server that we trust, npmjs."
-      connection_msg = f'ALKiln In The Playground is unable to connect to the server where ALKiln is stored. { we_cant_help } { try_later }'
-      _log(f"""🤕 ALKiln ERROR: npmjs ConnectionError. ALKiln In The Playground is unable to connect to the servers where ALKiln is stored. The author's docassemble server might be disconnected from the internet, npmjs' server may be unavailable, or something else may be wrong. { we_cant_help } { try_later } Stacktrace:""")
+      connection_msg = f'ALKilnInThePlayground is unable to connect to the server where ALKiln is stored. { we_cant_help } { try_later }'
+      _log(f"""🤕 ALKiln ERROR: npmjs ConnectionError. ALKilnInThePlayground is unable to connect to the servers where ALKiln is stored. The author's docassemble server might be disconnected from the internet, npmjs' server may be unavailable, or something else may be wrong. { we_cant_help } { try_later } Stacktrace:""")
       _log( traceback.format_exc() )
   
     except requests.RequestException as req_err:
-      connection_msg = 'ALKiln In The Playground ran into a "RequestException" error when it tried to connect to the server that stores the ALKiln package. { try_later }'
+      connection_msg = 'ALKilnInThePlayground ran into a "RequestException" error when it tried to connect to the server that stores the ALKiln package. { try_later }'
       _log(f"🤕 ALKiln ERROR: { connection_msg } Stacktrace:")
       _log( traceback.format_exc() )
   
     except Exception as general_err:
-      connection_msg = f'ALKiln In The Playground ran into a "{ type( general_err ).__name__ }" error when it tried to connect to the server that stores the ALKiln package. { try_later }'
+      connection_msg = f'ALKilnInThePlayground ran into a "{ type( general_err ).__name__ }" error when it tried to connect to the server that stores the ALKiln package. { try_later }'
       _log(f"🤕 ALKiln ERROR: { connection_msg } Stacktrace:")
       _log( traceback.format_exc() )
       # Discuss clarity of an alternative:
@@ -527,7 +527,7 @@ code: |
       _log('🤕 ALKiln ERROR ALKP0003: getting this server\'s currently installed ALKiln version:')
       _log(f'Error code: { packages.returncode }')
       _log( packages.stderr.decode("utf-8") )
-      server_version = f"Could not get this server's version of ALKiln. ALKiln In The Playground got an error instead. { da_log_more_info }"
+      server_version = f"Could not get this server's version of ALKiln. ALKilnInThePlayground got an error instead. { da_log_more_info }"
     else:
       pattern = re.compile(r'suffolklitlab/alkiln@(\d.*)$')
       matches = re.search(pattern, packages.stdout.decode())
@@ -697,7 +697,7 @@ code: |
       define( "broad_news_exception", current_error )
       log_to_debug = False
 
-    news_distributor_msg = f"🖊️ ALKiln NOTE: ALKiln In The Playground was unable to get the ALKiln notifications that come with ALKiln v5.16.0 or above. Potentially more info:"
+    news_distributor_msg = f"🖊️ ALKiln NOTE: ALKilnInThePlayground was unable to get the ALKiln notifications that come with ALKiln v5.16.0 or above. Potentially more info:"
     if log_to_debug:
       _debug( news_distributor_msg )
       _debug("\n".join( traceback.format_exception( broad_news_exception ) ))
@@ -908,7 +908,7 @@ subquestion: |
   
   <div class="alert alert-warning">
   % if install_failed:
-  ALKiln In The Playground was unable to install a new version of ALKiln. ${ worker_log_more_info }
+  ALKilnInThePlayground was unable to install a new version of ALKiln. ${ worker_log_more_info }
   % endif
 
   % if version_error != '':
@@ -1175,7 +1175,7 @@ code: |
           # complete the process itself. Low level interface.
           process.wait()
         else:
-          log(f"""🤕 ALKiln ERROR: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by a value in the server config under the `alkiln` key that has a non-string value. It often comes with the message "expected str, bytes or os.PathLike object, not bool". To dig even deeper, check the `run_alkiln` block in the ALKiln In The Playground repository.""")
+          log(f"""🤕 ALKiln ERROR: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by a value in the server config under the `alkiln` key that has a non-string value. It often comes with the message "expected str, bytes or os.PathLike object, not bool". To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository.""")
       except ProcessLookupError as already_terminated_error:
         # An already terminated process is a happy process
         pass
@@ -1207,7 +1207,7 @@ code: |
       ## too badly wrong, this might be the only available info from the tests.
       # log(f"""💡 ALKiln INFO: ALKiln test run output:\n{ output_main }""" )
 
-      background_response( f"ALKiln In The Playground proccess id: { test_run_pid }\n\n{ output_main }" )
+      background_response( f"ALKilnInThePlayground proccess id: { test_run_pid }\n\n{ output_main }" )
 ---
 code: |
   has_started_tests = False
@@ -1554,13 +1554,13 @@ code: |
       
     except Exception as zip_process_error:
       zipping_did_error = True
-      _log( f'🤕 ALKiln ERROR: subprocess errored when ALKiln In The Playground tried to zip the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
+      _log( f'🤕 ALKiln ERROR: subprocess errored when ALKilnInThePlayground tried to zip the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
       import traceback
       _log("\n".join( traceback.format_exception( zip_process_error ) ))
 
     if zipping_did_error:
       return f"""
-        <div class="alkiln_error alert alert-warning">ALKiln In The Playground was unable to create a zip file for the test artifacts. { da_log_more_info }</div>\n
+        <div class="alkiln_error alert alert-warning">ALKilnInThePlayground was unable to create a zip file for the test artifacts. { da_log_more_info }</div>\n
       """
   
     zip_path = get_zip_path()["path"]
@@ -2090,7 +2090,7 @@ content: |
         <dd class="col-6">${ get_installed_version() }</dd>
       </div>
       <div class="version row justify-content-between">
-        <dt class="col-6">ALKiln In The Playground version</dt>
+        <dt class="col-6">ALKilnInThePlayground version</dt>
         <dd class="col-6">${ alkip_version }</dd>
       </div>
 
@@ -2141,7 +2141,7 @@ content: |
   % elif test_run_output.ready():
   ${ test_run_output.get() }
   % else:
-  Sorry, ALKiln In the Playground is unable to get the console logs.
+  Sorry, ALKilnInThePlayground is unable to get the console logs.
   % endif
 ---
 template: setup_error_html
