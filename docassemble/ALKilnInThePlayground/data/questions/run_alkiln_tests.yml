@@ -114,6 +114,7 @@ code: |
   set_parts( title=f"ALKiln { project_name } tests" )
   set_parts( subtitle=tag_expression )
 
+  _debug("Setting up")
   if (
     ( artifacts_folder_and_runtime_config_final_status == 'done' and artifacts_errored )
     or ( validate_feature_files_final_status == 'done' and validation_errored )
@@ -1121,7 +1122,7 @@ code: |
       # action, even when the task is revoked, so we can kill
       # the process
       test_run_pid = process.pid
-      log(f"""💡 ALKiln INFO: Running ALKiln tests with process ID { test_run_pid }. The process should timeout after { max_run_time } seconds""" )
+      log(f"""💡 ALKiln INFO: Running ALKiln tests with process ID { test_run_pid }. This process will run for a maximum of { max_run_time } seconds""" )
 
       start_process_wait_time = current_datetime()
       
@@ -1263,7 +1264,7 @@ need:
   - folder_name
   - folder_path
 code: |
-  test_data = get_files_html( folder_name, folder_path )
+  test_data = get_files_html( folder_path )
   files_html = test_data["html"]
   test_run_outcome = test_data["outcome"]
   if files_html == None:
@@ -1284,13 +1285,12 @@ need:
 code: |
   import os
   
-  def get_files_html(local_folder_name, local_folder_path):
+  def get_files_html(local_folder_path):
     """
     Return html to show artifacts files and artifacts zip. Discuss: The args
         may be unnecessary complications.
 
     Args:
-        local_folder_name (str): name of the artifacts folder
         local_folder_path (str): path of the artifacts folder
 
     Returns:
@@ -1406,7 +1406,7 @@ code: |
     html += '<section class="section scenarios">\n'
     html += get_scenarios_header()
   
-    if (( not generation_dir_exists and len(top_dirs) <= 0 )
+    if ( len(top_dirs) <= 0
         or ( generation_dir_exists and len(top_dirs) <= 1 )):
       _debug("0 `top_dir`s found")
       html += """
@@ -1528,7 +1528,7 @@ code: |
   
       # cwd controls where the expanded zip's path starts. Every folder beyond
       # the cwd location will show up in the output of expanding the zip.
-      # zip_name_no_ext ex: "the_zip", folder_path ex: "the_folder"
+      # zip_name_no_ext ex: "the_zip"
       # folder_path ex: "/tmp/the_folder"
       zip_process = subprocess.run(['zip', '-rv', zip_name_no_ext, folder_name ], cwd=root_path, check=False, capture_output=True)
 
@@ -2202,7 +2202,7 @@ code: |
 
   folder_temp_path = get_existing_path( dir_name=folder_temp_name )
   if folder_temp_path is None:
-    folder_path_problem = f'Unable to find artifacts folder at "{ folder_name }".'
+    folder_path_problem = f'Unable to find artifacts folder called "{ folder_temp_name }".'
     _log(f'🤕 ALKiln ERROR: { folder_path_problem }')
 
   root_path = os.path.dirname( folder_temp_path )
