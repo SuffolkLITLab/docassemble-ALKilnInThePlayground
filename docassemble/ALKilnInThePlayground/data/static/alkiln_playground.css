@@ -92,6 +92,7 @@ header .description {
 .functional_buttons_container {
   note: "Plural 'buttons'";
   margin-right: var(--functional-button-margin);
+  white-space: nowrap;
 }
 .functional_button_container {
   note: "Singular 'button'";

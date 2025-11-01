@@ -46,6 +46,25 @@ Format:
 ## [Unreleased]
 
 ### Added
+-
+
+### Changed
+- Change some errors to warnings
+- Stop functional buttons from wrapping
+
+### Deprecated
+- Deprecating versions of ALKiln below 5.15.0 at this point.
+
+### Fixed
+- Fix "no scenario output" text was showing when there is indeed output. See [#66](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/66).
+- Fix padding was missing from console output container (and other styles). Turns out we need the page to have `#daform` on it for some styles to take effect and that's one of them. Added `button` to that `show_output` to force it to have that id. It seems sub-optimal. See [#64](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/64).
+- Fix generated file accordion items' box shadows are overlapped their previous siblings. That should close [#63](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/63) as well. See [#62](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/62).
+- Fix make strings that should be f-strings into f-strings.
+- Temporarily handle system error screen showing `TaskRevokedError: terminated`. Note: The system error disappeared when I added a linux `timeout` command and its argument to the start of the subprocess commands. I can't see how that additional command + argument could have made that screen, and possibly the error, disappear as `revoke` still gets triggered. With some manual testing, this does seem to be _a_ solution. We still need to explore how to really solve the revocation issues and I have some ideas. For now, the annoyance of the screen is gone. See [#68](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/68).
+
+## [1.4.0] - 2025-10-26
+
+### Added
 
 - Added the constrained randomized test capabilities that GitHub-based tests already have. See [#41](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/41).
 - Added ALKiln notifications to show information about updates, issues, and version conflicts between ALKiln and ALKilnInThePlayground. See [#49](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/49).

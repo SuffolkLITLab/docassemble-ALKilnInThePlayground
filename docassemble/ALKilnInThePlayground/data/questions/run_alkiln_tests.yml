@@ -6,7 +6,7 @@
 # TODO: Add "Running offline" info callout to every page when offline
 # TODO: Explore alkiln_config_vars vs. env_vars vs. cusotm_env_vars vs. dangerous_conf...
 # TODO: Guard function calls for functions that are only used once with a flag. That will help us find where undefined variables are causing functions to be run repeatedly.
-# TODO: There is a box shadow above accordion items that hides the gap between the accordion item and the header above it. That's slow. Instead, use a new element created just for that purpose.
+# TODO: There is a box shadow above accordion items that hides the gap between the accordion item and the header above it. That's slow. Some exploration has shown it's more challenging to improve than expected. Using a new element created just for that purpose isn't enough if it starts as unrendered.
 # TODO: replace `raise`s with error screens
 # TODO: Add more ids, including for code blocks
 # Discuss: Show the user's username to them? Not great for recording anonymized runs through the interview, but it would put the information front and center. People have gotten confused before when exploring other user's sessions and, I believe, Projects.
@@ -142,7 +142,7 @@ code: |
     if stopped_early or test_run_output.ready():
       _debug(f"stopped_early: { stopped_early }")
       run_get_files_html
-      # We remove the original files after showing the output screen
+      # Note: we remove the original files after showing the output screen
       ran_tests = True
       show_output
     else:
@@ -484,7 +484,7 @@ code: |
       #     rabbit hole for the authors:
       #     "ALKiln is stored on a third-party server that we trust, npmjs."
       connection_msg = f'ALKilnInThePlayground is unable to connect to the server where ALKiln is stored. { we_cant_help } { try_later }'
-      _log("🤕 ALKiln ERROR: npmjs ConnectionError. ALKilnInThePlayground is unable to connect to the servers where ALKiln is stored. The author's docassemble server might be disconnected from the internet, npmjs' server may be unavailable, or something else may be wrong. { we_cant_help } { try_later } Stacktrace:")
+      _log(f"""🤕 ALKiln ERROR: npmjs ConnectionError. ALKilnInThePlayground is unable to connect to the servers where ALKiln is stored. The author's docassemble server might be disconnected from the internet, npmjs' server may be unavailable, or something else may be wrong. { we_cant_help } { try_later } Stacktrace:""")
       _log( traceback.format_exc() )
   
     except requests.RequestException as req_err:
@@ -794,7 +794,7 @@ code: |
     install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
     did_install = True
   
-  log('💡 ALKiln INFO: Trying to install version {action_argument("version")}.')
+  log(f"""💡 ALKiln INFO: Trying to install version { action_argument("version") }.""")
   if install_output.returncode != 0:
     result = install_output.stderr.decode('utf-8')
     log(f'🤕 ALKiln ERROR ALKP0004: installing ALKiln version {action_argument("version")} failed')
@@ -809,7 +809,7 @@ code: |
       delete_kiln_output = subprocess.run(['rm', '-r', '/var/www/.npm-global/lib/node_modules/@suffolklitlab'], check=False, capture_output=True)
       
       # Do we need an idempotency flag here?
-      log('💡 ALKiln INFO: Trying to install version {action_argument("version")} again.')
+      log(f"""💡 ALKiln INFO: Trying to install version { action_argument("version") } again.""")
       install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
       
       # Discuss: If install failed again, worth a 3rd try?
@@ -1043,6 +1043,8 @@ code: |
   # if statement for idempotency - ensure tests are only run once
   if not has_started_tests:
     returncode = None
+    test_output = None
+    test_run_pid = None
   
     # Ensure that files in the 'sources' folder of all projects are
     # cached in /tmp for S3 and such server configurations so that
@@ -1052,16 +1054,30 @@ code: |
     SavedFile(user_info().id, fix=True, section='playgroundsources')
 
     sources_arg = f'--sources={ sources }'
-    log('💡 ALKiln INFO: sources path: {sources}')
+    log(f"""💡 ALKiln INFO: sources path: { sources }""")
   
     tags = action_argument('tag_expression')
+  
+    # linux and `.communicate()` `timeout` is in seconds
+    # 60 seconds * 60 minutes * 12 hours
+    timeout_env_var_name = 'ALKILN_MAX_SECONDS_FOR_PLAYGROUND_TEST_RUN'
+    max_run_time = env_vars.get(
+      timeout_env_var_name,
+      60 * 60 * 12
+    )
 
+    # Use linux's `timeout` to ensure this process times out
+    # even if the celery process gets revoked
     # Make sure not to pass an empty string for tags as that results in
     # a "@" with no value after it in ALKiln.
     if tags != '':
+      # 'timeout', max_run_time args somehow cause returncode of
+      # `None` when stopping early and avoids the system error
       to_run = ['/var/www/.npm-global/bin/alkiln-run', tags, sources_arg]
     else:
-      to_run = ['/var/www/.npm-global/bin/alkiln-run', sources_arg]
+      # 'timeout', max_run_time args somehow cause returncode of
+      # `None` when stopping early and avoids the system error
+      to_run = ['timeout', max_run_time, '/var/www/.npm-global/bin/alkiln-run', sources_arg]
     
     # Prepare the environment variables
     custom_env = dict(
@@ -1101,17 +1117,13 @@ code: |
       )
 
       # Get the process id of the subprocess
+      # TODO: Make sure this id makes it out of this background
+      # action, even when the task is revoked, so we can kill
+      # the process
       test_run_pid = process.pid
-      log('💡 ALKiln INFO: Running ALKiln tests with process ID { test_run_pid }' )
+      log(f"""💡 ALKiln INFO: Running ALKiln tests with process ID { test_run_pid }. The process should timeout after { max_run_time } seconds""" )
 
       start_process_wait_time = current_datetime()
-      # `.communicate()` `timeout` is in seconds
-      # 60 seconds * 60 minutes * 12 hours
-      timeout_env_var_name = 'ALKILN_MAX_SECONDS_FOR_PLAYGROUND_TEST_RUN'
-      max_run_time = env_vars.get(
-        timeout_env_var_name,
-        60 * 60 * 12
-      )
       
       try:
         # Get output tuple: `(stdout_data, stderr_data)`
@@ -1119,19 +1131,25 @@ code: |
         test_output = process.communicate( timeout=max_run_time )
         returncode = process.returncode
       except subprocess.TimeoutExpired:
-        # Example of use of this exception:
+        # Example use of this exception:
         # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/ef5dd232b0a3557fd4b8e9185883e0ecc6a161bb/docassemble/AssemblyLine/al_document.py#L2842-L2850
-        timeout_output = f'🤕 ALKiln ERROR ALKP0006: the tests run with the pid { test_run_pid } ran for over { date_difference( starting=start_process_wait_time, ending=current_datetime() ).hours } hours. The maximum time allowed is { max_run_time/60/60 } hours. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` section and giving it a different value.'
+        timeout_output = f'🤕 ALKiln ERROR ALKP0006: the tests run with the pid { test_run_pid } ran for over { date_difference( starting=start_process_wait_time, ending=current_datetime() ).seconds } seconds. The maximum time allowed is { max_run_time } seconds. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` section and giving it a different value.'
         log(timeout_output)
       except Exception as error:
         log('🤕 ALKiln ERROR ALKP0010: Error while running tests:')
         log(error)
 
+    except subprocess.TimeoutExpired:
+      # Example use of this exception:
+      # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/ef5dd232b0a3557fd4b8e9185883e0ecc6a161bb/docassemble/AssemblyLine/al_document.py#L2842-L2850
+      timeout_output = f'🤕 ALKiln ERROR ALKP0012: the tests run with the pid { test_run_pid } ran for over { date_difference( starting=start_process_wait_time, ending=current_datetime() ).seconds } seconds. The maximum time allowed is { max_run_time } seconds. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` section and giving it a different value.'
+      log(timeout_output)
+  
     except Exception as test_run_error:
       import traceback
   
       # We get here even when the sub-processes fail
-      log('💡 ALKiln INFO: The test subprocess completed with the returncode { returncode }:' )
+      log(f"""💡 ALKiln INFO: The test subprocess completed with the returncode { returncode }:""" )
       log("\n".join( traceback.format_exception( test_run_error ) ))
 
       # Throw error if the process (not the tests) failed
@@ -1139,7 +1157,7 @@ code: |
       # lower down?
       # Discuss: Consolidate failure messages into 1 message
       if returncode != None and returncode != 0:
-        # Reraise the error
+        # TODO: Handle the error with a screen
         raise
     
     finally:
@@ -1150,14 +1168,14 @@ code: |
       # You can test this by not stringifying `alkiln` env vars
       # and including a bool value in those env vars
       try:
-        if defined("test_run_pid"):
+        if test_run_pid != None:
           os.killpg(os.getpgid( test_run_pid ), signal.SIGTERM)
           # We have to terminate this process ourselves because
           # when `.communicate` runs out of time, the system doesn't
           # complete the process itself. Low level interface.
           process.wait()
         else:
-          log('''🤕 ALKiln ERROR: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by a prior interrupted ALKiln installations. It often comes with the message "expected str, bytes or os.PathLike object, not bool". You can try running `rm -rf /var/www/.npm-global/bin` and `rm -rf /var/www/.npm-global/lib` in your server's shell, then restart this interview. To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository.''')
+          log(f"""🤕 ALKiln ERROR: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by a value in the server config under the `alkiln` key that has a non-string value. It often comes with a message similar to "expected str, bytes or os.PathLike object, not bool". To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository.""")
       except ProcessLookupError as already_terminated_error:
         # An already terminated process is a happy process
         pass
@@ -1167,7 +1185,7 @@ code: |
         
       # === Output ===
   
-      if defined('test_output'):
+      if test_output != None:
         stdout = test_output[0].decode('utf-8')
         stderr = test_output[1].decode('utf-8')
 
@@ -1187,9 +1205,9 @@ code: |
 
       ## Discuss: This seems like too much to put in the logs, but if things go
       ## too badly wrong, this might be the only available info from the tests.
-      # log('💡 ALKiln INFO: ALKiln test run output:\n{ output_main }' )
-      
-      background_response( output_main )
+      # log(f"""💡 ALKiln INFO: ALKiln test run output:\n{ output_main }""" )
+
+      background_response( f"ALKilnInThePlayground proccess id: { test_run_pid }\n\n{ output_main }" )
 ---
 code: |
   has_started_tests = False
@@ -1281,7 +1299,7 @@ code: |
         - outcome (str or None): 'failed', 'unexpected', 'passed' or None
     """
 
-    test_run_outcome = None
+    local_test_run_outcome = None
   
     if local_folder_path is None:
       return {"html": None, "outcome": None}
@@ -1308,8 +1326,10 @@ code: |
   
     # ====== Add all generated tests ======
     # There should be only one directory, but this looks clean
+    generation_dir_exists = False
     generation_dirs = [ dir for dir in top_dirs if '_alkiln_generated' in dir.name ]
     for dir in generation_dirs:
+      generation_dir_exists = True
       html += get_generated_Scenarios_section( dir )
   
     # ====== "Root" level files section ======
@@ -1338,15 +1358,15 @@ code: |
         with open(file.path, 'r') as report:
           content = report.read()
         if 'ALK0099' in content:
-          test_run_outcome = 'failed'
+          local_test_run_outcome = 'failed'
         elif 'ALK0055' in content:
-          test_run_outcome = 'unexpected'
+          local_test_run_outcome = 'unexpected'
         elif 'ALK0054' in content:
-          test_run_outcome = 'passed'
+          local_test_run_outcome = 'passed'
       elif file.name == 'temp_unexpected_results_debug_log.txt':
-        # TODO: Only skip this file if the "unexpected results" file did get created at the end
+        # Always skip this file. Don't worry, unexpected_results.txt gets added along with
+        # the rest of the files
         continue
-      # TODO: Add "unexpected results" file? Above or below the report file?
 
       # Summary files
       else:
@@ -1385,6 +1405,15 @@ code: |
     # ====== Start all Scenarios ======
     html += '<section class="section scenarios">\n'
     html += get_scenarios_header()
+  
+    if (( not generation_dir_exists and len(top_dirs) <= 0 )
+        or ( generation_dir_exists and len(top_dirs) <= 1 )):
+      _debug("0 `top_dir`s found")
+      html += """
+        <div class="output card card-body scenario">
+          <div class="no_output">ALKiln found no Scenario files.</div>
+        </div>
+      """
     
     # For each Scenario
     for dir in top_dirs:
@@ -1439,16 +1468,11 @@ code: |
           html += f'<ul class="other_files">\n{other_files_html}\n</ul>\n'
       # Ends one Scenario
       html += '</div>\n'
-  
-    else:
-      html += '<div class="output card card-body scenario">\n'
-      html += '<div class="no_output">ALKiln found no output files.</div>\n'
-      html += '</div>\n'
       
     # End all Scenarios
     html += '</section>\n'
     
-    return { "html": html, "outcome": test_run_outcome }
+    return { "html": html, "outcome": local_test_run_outcome }
 ---
 id: top buttons
 need:
@@ -1524,7 +1548,7 @@ code: |
 
     except FileNotFoundError as zip_process_error:
       zipping_did_error = True
-      _log( f'🤕 ALKiln ERROR: could not find the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
+      _log( f'🔎 ALKiln WARNING: could not find the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
       import traceback
       _log("\n".join( traceback.format_exception( zip_process_error ) ))
       
@@ -1542,7 +1566,7 @@ code: |
     zip_path = get_zip_path()["path"]
   
     if zip_process.stdout:
-      _debug('💡 ALKiln INFO: saved the artifacts zip file correctly to "{ zip_path }". stdout:')
+      _debug(f"""💡 ALKiln INFO: saved the artifacts zip file correctly to "{ zip_path }". stdout:""")
       _debug( zip_process.stdout )
 
     zip_da_file = DAFile()
@@ -1616,9 +1640,12 @@ code: |
     # If we generate files in parallel we'll have to check again.
     for gen_root_path, dir_names, file_names in os.walk(f'{dir.path}'):
       file_names.sort()
-      for file_name in file_names:
+      num_files = len( file_names )
+      for name_i in range( 0, num_files ):
+        file_name = file_names[ name_i ]
         path = os.path.abspath(os.path.join(gen_root_path, file_name))
-        html += get_feature_html( path, file_name )
+        z_index = num_files - name_i
+        html += get_feature_html( path, file_name, z_index )
   
     html += "</div>\n"  # ends generated accordions
     html += "</section>\n"  # ends generated section
@@ -1715,8 +1742,8 @@ need:
   - accordion_content_for_file
 code: |
   import os
-  
-  def get_feature_html( path, file_name ):
+    
+  def get_feature_html( path, file_name, z_index ):
     """
     Return the HTML for one generated feature file
   
@@ -1744,7 +1771,7 @@ code: |
     feat.menu = menu_download_n_copy( feat )
   
     html = f"""
-    <section class="accordion-item feature_files alkiln_copy">
+    <section class="accordion-item feature_files alkiln_copy" style="z-index: { z_index }">
       { sticky_accordion_header( feat ) }
       { accordion_content_for_file( feat ) }
     </section>
@@ -1980,6 +2007,9 @@ subquestion: |
   </div>
 
   ${ "" if remove_tmp_files else "" }
+# Keep exit button to give the page the #daform selector as da bases some styles on that selector
+buttons:
+  - Exit: exit
 action buttons:
   - label: Run new tests
     action: do_skip_install_session
@@ -2039,6 +2069,13 @@ content: |
   You tried to stop the tests early, but the tests were already done.
   </aside>
   % endif
+  % elif test_run_outcome is None:
+  <header class="tests_unexpected alert alert-warning" style="max-height: unset;">
+  <h2>🌀 Hmm, something unexpected happened</h2>
+  <p style="margin: 0;">
+  This one's a toughie. We do not have ways to deal with this kind of problem yet. There might be more information below.
+  </p>
+  </header>
   % endif
 ---
 # Discuss: If we've thoroughly dealt with the final output page regeneration
@@ -2099,10 +2136,12 @@ content: |
   % if not defined('test_run_output'):
   Tests did not run. More information should be above.
   ${ worker_log_more_info } If not, please get in touch with the ALKiln developers.
-  % elif test_run_output.get() is None or test_run_output.get() == 'None':
+  % elif test_run_output.ready() and (test_run_output.get() is None or test_run_output.get() == 'None'):
   There is no console output for the tests that ran. ${ worker_log_more_info }
-  % else:
+  % elif test_run_output.ready():
   ${ test_run_output.get() }
+  % else:
+  Sorry, ALKilnInThePlayground is unable to get the console logs.
   % endif
 ---
 template: setup_error_html
@@ -2471,7 +2510,7 @@ code: |
         to_log (str): Value to log.
         where (str): A valid 2nd argument to docassemble `log()`. Ex: 'console'
     """
-    if debugging:
+    if debugging == True or debugging == "true" or debugging == "True" or debugging == "TRUE" or debugging == "1":
       try:
         log( repr( to_log ), where )
         if where != "console":
@@ -2486,7 +2525,7 @@ code: |
     return ''
 ---
 code: |
-  debugging = alkiln_config_vars.get('alkip_debug', False)
+  debugging = alkiln_config_vars.get('alkip_debug', False) or alkiln_config_vars.get("alkiln_debug", False)
 ---
 ---
 code: |
