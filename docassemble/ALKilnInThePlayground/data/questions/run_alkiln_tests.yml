@@ -1175,7 +1175,7 @@ code: |
           # complete the process itself. Low level interface.
           process.wait()
         else:
-          log(f"""🤕 ALKiln ERROR: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by a value in the server config under the `alkiln` key that has a non-string value. It often comes with the message "expected str, bytes or os.PathLike object, not bool". To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository.""")
+          log(f"""🤕 ALKiln ERROR: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by a value in the server config under the `alkiln` key that has a non-string value. It often comes with a message similar to "expected str, bytes or os.PathLike object, not bool". To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository.""")
       except ProcessLookupError as already_terminated_error:
         # An already terminated process is a happy process
         pass
