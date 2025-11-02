@@ -1074,11 +1074,11 @@ code: |
     if tags != '':
       # 'timeout', max_run_time args somehow cause returncode of
       # `None` when stopping early and avoids the system error
-      to_run = ['/var/www/.npm-global/bin/alkiln-run', tags, sources_arg]
+      to_run = ['timeout', str(max_run_time), '/var/www/.npm-global/bin/alkiln-run', tags, sources_arg]
     else:
       # 'timeout', max_run_time args somehow cause returncode of
       # `None` when stopping early and avoids the system error
-      to_run = ['timeout', max_run_time, '/var/www/.npm-global/bin/alkiln-run', sources_arg]
+      to_run = ['timeout', str(max_run_time), '/var/www/.npm-global/bin/alkiln-run', sources_arg]
     
     # Prepare the environment variables
     custom_env = dict(
