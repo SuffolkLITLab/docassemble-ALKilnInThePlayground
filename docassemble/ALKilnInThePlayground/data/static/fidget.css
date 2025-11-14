@@ -1,0 +1,58 @@
+@about {
+  text: "An animation to help authors cope with waiting for a task to finish cancelling."
+  sources: "Wiggle: https://codepen.io/theDeanH/pen/zBZXLN"
+}
+
+#frustration_result {
+  width: fit-content;
+  padding-top: .5em;
+}
+
+#frustration:has(a:focus) ~ #frustration_result,
+#frustration_result:focus {
+  animation-name: vibrate;
+  animation-duration: 800ms;
+  animation-iteration-count: 1;
+  animation-timing-function: ease-in-out;
+  
+}
+
+#frustration:has(a:active) ~ #frustration_result,
+#frustration_result:active {
+  animation: none;
+  animation-name: none;
+}
+
+:root {
+  --up: -3px;
+  --upp: -5px;
+  --r: 2px;
+  --l: 4px;
+}
+
+@keyframes vibrate {
+  0%  {transform: translateY(var(--up));}
+  15% {transform: translateY(var(--upp)) translateX(var(--r));}
+  25% {transform: translateY(var(--up));}
+  30% {transform: translateY(var(--upp)) translateX(var(--l));}
+  35% {transform: translateY(var(--up));}
+  38% {transform: translateY(var(--upp)) translateX(var(--r));}
+  41% {transform: translateY(var(--up));}
+  42% {transform: translateY(var(--upp)) translateX(var(--l));}
+  43% {transform: translateY(var(--up));}
+  45% {transform: translateY(var(--upp)) translateX(var(--r));}
+  47% {transform: translateY(var(--up));}
+  50% {transform: translateY(var(--upp)) translateX(var(--r));}
+  55% {transform: translateY(var(--up));}
+  65% {transform: translateY(var(--upp)) translateX(var(--r));}
+  85% {transform: translateY(var(--upp)) translateX(var(--r));}
+  90% {transform: translate(0);}
+}
+
+@keyframes wiggle {
+  0% {transform: rotate(10deg);}
+  25% {transform: rotate(-10deg);}
+  50% {transform: rotate(20deg);}
+  75% {transform: rotate(-5deg);}
+  100% {transform: rotate(0deg);}
+}

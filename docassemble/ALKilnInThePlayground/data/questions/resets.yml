@@ -1,0 +1,20 @@
+---
+mandatory: True
+id: interview order
+code: |
+  do_things
+---
+id: all the things
+event: do_things
+question: Do potentially dangerous things
+action buttons:
+  - label: Delete /tmp/runtime_config.json
+    action: delete_config
+    color: danger
+---
+id: remove runtime config
+event: delete_config
+code: |
+  import pathlib
+  pathlib.Path.unlink("/tmp/runtime_config.json", missing_ok=True)
+---
