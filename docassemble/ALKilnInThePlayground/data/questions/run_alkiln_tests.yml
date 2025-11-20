@@ -10,6 +10,8 @@
 # TODO: replace `raise`s with error screens
 # TODO: Add more ids, including for code blocks
 # TODO: Add more useful information to the "My interviews" page with `set_parts()` to change metadata. Name of project and tags used. Maybe time, since AL doesn't show seconds on that page. Maybe the latter only matters to us.
+# TODO: Research `npm ping` for npm check instead of try/catch for connection failure
+# TODO: Research check for invalid alkiln install. This seems to require testing multiple angles. `npm ls` in alkiln's folder for direct dependencies with "npm error". Maybe `npm audit signatures` maybe in .npm-global/lib/node_modules and/or maybe in alkiln's folder. Maybe `npm explain --prefix /var/www/.npm-global` (or maybe in alkiln), though I'm not sure that's the right command. To check npm itself, maybe `npm doctor --prefix /var/www/.npm-global`, though we have some stuff that already errors despite working (versions and global bin folder not in PATH).
 # Discuss: Show the user's username to them? Not great for recording anonymized runs through the interview, but it would put the information front and center. People have gotten confused before when exploring other user's sessions and, I believe, Projects.
 # Discuss: Allow authors to run tests in other people's Playgrounds when they have permissions to open sessions and Playgrounds of other users while they are exploring those Playgrounds.
 # Research: exactly how do ids on code blocks affect the cache
@@ -45,7 +47,7 @@ features:
     - dynamic_css_vars.js
     - accordion_collapse_nav.js
 ---
-# event: frustration_test
+event: frustration_test
 question: Uh oh
 subquestion: |
   <div class="alert alert-info" markdown=1>The tests are stopping, honest. They really are doing their best. Here's yet another button. It won't do much, but it might help you feel better `(͡◵ Ĺ̯ ͡◵ )`</div>
@@ -114,8 +116,8 @@ code: |
       # Discuss: for some reason (at least when I switch between online and offline) we sometimes go to the install screen when going back to restart with a version number of "None". There are other shenanigans that happen when going back with `restart`. We have a lot to explore there. There are enough hiccups that it may be worth adding a warning when the author has been offline.
       if ( started_with_different_version or invalid_install ) and version_to_install:
   
+        # Prevent repeating the task
         if not stopped_install_early:
-          # Prevent repeating the task
           install_task
     
         if stopped_install_early and not did_terminate_install:
@@ -129,9 +131,12 @@ code: |
   
         # `.wait()` could cause a timeout
         # If we don't _always_ wait for install task to be ready, code will
-        # rerun on ready anyway as if new. E.g. `stopped_install_early` will
-        # go from True to False. For example, this would caus problems:
-        # if stopped_early or test_run_output.ready(). Instead:
+        # _Always_ wait for install task to be ready, otherwise when task
+        # does finish da will reset some values and then rerun. E.g.
+        # `stopped_early`, if True, will return to default False. Temp files
+        # will not regenerate. It causes file not found errors. For
+        # example, this code would break:
+        # `if stopped_early or test_run_output.ready()` Instead:
         if install_task.ready():
           if install_task.failed():
             # If failed after invalid install, even if it was a different
@@ -198,22 +203,23 @@ code: |
         test_pid_already_terminated = terminate_process( test_pid )["ok"]
         delete_kip_session_dir()
 
-    # If we don't _always_ wait for test task to be ready, code will rerun on
-    # ready anyway as if new. E.g. `stopped_early` will go from True to False.
-    # This wouldn't work properly, for example:
-    # if stopped_early or test_run_output.ready()
+    # _Always_ wait for install task to be ready, otherwise when task does
+    # finish da will reset some values and then rerun. E.g. `stopped_early`,
+    # if True, will return to default False. Temp files will not regenerate. It
+    # causes file not found errors. For example, this code would break:
+    # `if stopped_early or test_run_output.ready()` Instead:
     if test_run_output.ready():
       # Don't need `.failed()`. show_output should show any failures.
       _debug(f"Test action ready. stopped_early: { stopped_early }")
       run_get_files_html
       ran_tests = True
-      # Note: we remove the original files after showing the output screen
+      # Note: we remove the original files in the output screen
       show_output
     else:
       waiting_screen
 
   _debug(f"Skipped to the end. ran_tests: { ran_tests }; stopped_early: { stopped_early }")
-  # Note: we remove the original files after showing the output screen
+  # Note: we remove the original files in the output screen
   show_output
 ---
 code: |
@@ -284,16 +290,6 @@ buttons:
 ---
 event: stop_install_early
 code: |
-  # The installation is not necessarily invalid
-  # TODO: Research check for invalid alkiln install. This seems to require
-  # testing multiple angles. `npm ls` in alkiln's folder for direct
-  # dependencies with "npm error". Maybe `npm audit signatures` maybe in
-  # .npm-global/lib/node_modules and/or maybe in alkiln's folder. Maybe
-  # `npm explain --prefix /var/www/.npm-global` (or maybe in alkiln), though
-  # I'm not sure that's the right command. To check npm itself, maybe
-  # `npm doctor --prefix /var/www/.npm-global`, though we have some stuff that
-  # already errors despite working (versions and global bin folder not in
-  #  PATH).
   redo_after_stopped_install = True
   stopped_install_early = True
 ---
@@ -385,7 +381,7 @@ subquestion: |
   % if stopped_install_early:
   It looks like you or someone else may have stopped early when you or they were installing a new version of ALKiln. To be sure that your server has a valid version of ALKiln, we recommend you try to install again.
   % else:
-  Your server is unable to find ALKiln. It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and that installation got interrupted at a bad time. You need a new version of ALKiln.
+  We are unable to find a version of ALKiln installed on your server. It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and that installation got interrupted at a bad time. You need a new version of ALKiln.
   % endif
   </div>
 
@@ -421,7 +417,7 @@ validation code: |
   if not wants_install and "Could not get" in get_installed_version():
     validation_error('You must install a version of ALKiln')
 comment: |
-  For the future when we actually check for an invalid install, potentially by checking for `npm ERR` from an `npm check`:
+  For when we check for an invalid ALKiln install:
   It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and that installation got interrupted at a bad time. You need a new version of ALKiln.
 ---
 # TODO: Test these different versions of the first page show up at the right times
@@ -871,6 +867,7 @@ need:
   - made_npm_dir_successfully
   - did_start_alkiln_install
   - try_to_start_install
+  - save_kip_session_vars
   - try_to_finish_install
   - worker_log_link
 code: |
@@ -904,6 +901,7 @@ code: |
     install_process = install_attempt_result["result"]
     install_pid = install_process.pid
     max_run_time = 60 * 5  # seconds
+    # Always log pid of processes so admins can terminate them manually if needed
     log(f"""💡 ALKiln INFO: Installing ALKiln v{ action_argument("version") } with process ID { install_pid }. This process will run for a maximum of { max_run_time } seconds.""" )
 
     # Try to store a process id to stop/terminate early if needed
@@ -925,6 +923,16 @@ code: |
 
   def try_to_start_install( desired_version ):
     """
+    Return status of installation, any messages, and process.
+    
+    Args:
+      desired_version: The version of ALKiln to try to install
+    
+    Returns:
+      (dict):
+        ok: True if succeeded, else False
+        message: Additional info about what happened
+        process: Value returned by `subprocess.Popen()`
 
     Note: The processes have a max timeout
     """
@@ -951,7 +959,7 @@ code: |
 
     except Exception as alkiln_1st_install_error:
       # In the past, I too have had to uninstall and reinstall.
-      # Discuss: Skip the first attempt to install?
+      # Discuss: Skip the first install? Always uninstall first?
 
       try:
         log("💡 ALKiln INFO: Trying to clean up the old ALKiln installation after exception.")
@@ -1045,7 +1053,7 @@ code: |
           install_process.wait()
 
         else:
-          message = f"The ALKiln installation process ended and the process ID is missing. We have no more information, sorry."
+          message = f"The ALKiln installation process ended and the process ID is missing. We hope there is more information elsewhere."
           log(f"""🤕 ALKiln ERROR: { message }""")
           messages.append( message )
 
@@ -1063,7 +1071,7 @@ code: |
     # === Results ===
 
     if returncode == None or returncode != 0:
-      message = f"""ALKiln installation had a non-zero return code of { returncode }."""
+      message = f"""ALKiln installation had a non-zero return code of { returncode }. Not very useful. We hope there is more information elsewhere."""
       log(f"""🔎 ALKiln WARNING: { message }""")
       messages.append( message )
 
@@ -1374,7 +1382,6 @@ code: |
       60 * 60 * 12
     )
 
-    # Use linux's `timeout` to ensure this process times out no matter what
     # Make sure not to pass an empty string for tags as that results in
     # a "@" with no value after it in ALKiln.
     if tags != '':
@@ -1402,8 +1409,6 @@ code: |
     
     # Ensure tests don't re-run, even (especially) if they error
     has_started_tests = True
-
-    # log(f"""ALKiln run: { to_run }, cwd: "{ root_path }", ...""")
     
     # Run the tests
     try:
@@ -1428,7 +1433,7 @@ code: |
       # Try to store a process id to stop/terminate early if needed
       save_kip_session_vars({ "test_pid": test_run_pid })
 
-      # ====== Process output ====== #
+      # ====== Process outcome and output ====== #
       try:
 
         # Get output tuple: `(stdout_data, stderr_data)`
@@ -1462,7 +1467,6 @@ code: |
       log("\n".join( traceback.format_exception( test_run_error ) ))
 
       # Throw error if the process (not the tests) failed
-      # Discuss: what should behavior here be? Where do we catch it later?
       # Discuss: Consolidate failure messages into 1 message
       if returncode != None and returncode != 0:
         # This will cause `.failed()` to return `True`
@@ -1582,10 +1586,11 @@ comment: |
 ---
 event: stop_tests_early
 code: |
-  _debug("#### stop_tests_early event ####")
+  _debug("Event: stop_tests_early")
   stopped_early = True
 ---
 code: |
+  # Research: This flag was an attempt to prevent `stopped_early` from getting reset to `False` when the background action got re-triggered (for some as yet unclear reason) before I guarded it with a flag. It may not be effective or necessary. We're leaving it here for now to move on to other issues.
   if not defined("stopped_early"):
     stopped_early = False
 ---
@@ -1600,10 +1605,6 @@ code: |
 need:
   - folder_path
 code: |
-  
-  # files_html = ""
-  # test_run_outcome = None
-  # file_problem = True
   if folder_path == None:
     files_html = ""
     test_run_outcome = None
@@ -2300,7 +2301,7 @@ code: |
     _log(f'🖊️ ALKiln NOTE ALKP0009: skipped removing "{ folder_path }".')
     _debug(error)
 
-  # TODO: Research whether we're deleting all devs' connections
+  # TODO: Research whether we're deleting the connections of all server devs
   # https://stackoverflow.com/a/32949415/14144258
   import glob
   try:
@@ -2326,9 +2327,9 @@ code: |
     """
     Try to remove ALKiP runtime session folder.
     Returns:
-        (dict):
-          ok (bool): False if there was an error. Else True.
-          message (str): Any message about the operation.
+      (dict):
+        ok (bool): False if there was an error. Else True.
+        message (str): Any message about the operation.
     """
     import shutil
   
@@ -2534,7 +2535,7 @@ content: |
   % elif test_run_output.ready():
   ${ test_run_output.get() }
   % else:
-  Sorry, ALKilnInThePlayground is unable to get the\nconsole logs yet. Refreshing the page later might or might not help.
+  Sorry, ALKilnInThePlayground is unable to get the console logs.
   % endif
 ---
 template: setup_error_html
@@ -2575,7 +2576,6 @@ code: |
     try:
       # SIGTERM is not enough
       os.killpg(os.getpgid( process_id ), signal.SIGKILL)
-      # os.kill( process_id, signal.SIGTERM )
     except Exception as termination_error:
       message = f"""Skipping terminating { process_id }. The process might already be terminated.\n{ "\n".join(traceback.format_exception( termination_error )) }"""
       _debug( f"""🖊️ ALKiln NOTE: { message }""" )
@@ -2847,17 +2847,6 @@ code: |
       return {
         "ok": False, "message": message, "result": result
       }
-
-        # try:
-        #   result = {}
-        #   json.dump(result, config_file, ensure_ascii=False, indent=2)
-  
-        # except Exception as config_dump_error:
-        #   message = f"""Error dumping json to config file at "{ local_config_path }":\n{ "\n".join(traceback.format_exception( config_dump_error )) }"""
-        #   _log(f"""🤕 ALKiln ERROR ALKP0015: { message }""")
-        #   return {
-        #     "ok": False, "message": message, "result": result
-        #   }
   
     return { "ok": True, "message": message, "result": result }
 ---
@@ -2906,8 +2895,6 @@ need:
 code: |
   import os
   import traceback
-
-  # _debug(f"""folder_name trace: {"\n".join( traceback.print_stack() )}""")
   
   if config_path is None:
     folder_temp_name = 'no config'
@@ -2920,19 +2907,18 @@ code: |
   
       except Exception as config_load_error:
         folder_temp_name = 'json load error'
-        folder_path_problem = f"""Unable to load JSON from the ALKiln runtime_config.json file at "{ config_path }":\n{"\n".join( traceback.format_exception( config_load_error ) )}"""
-        _log(f'🤕 ALKiln ERROR ALKP0017: { folder_path_problem }')
-        _log( config_file )
+        folder_path_problem = f"""Unable to get test results files. Unable to load JSON from the ALKiln runtime_config.json file at "{ config_path }":\n{"\n".join( traceback.format_exception( config_load_error ) )}"""
+        _log(f'🤕 ALKiln ERROR ALKP0014: { folder_path_problem }')
+        _debug( config_file )
   
     if folder_temp_name == 'no json value':
       folder_path_problem = """The ALKiln runtime_config.json file at "{ config_path }" has no "artifacts_path" value."""
-      _log(f'🤕 ALKiln ERROR ALKP0018: { folder_path_problem }')
+      _log(f'🤕 ALKiln ERROR ALKP0015: { folder_path_problem }')
 
     folder_temp_path = get_existing_path( dir_name=folder_temp_name )
   
   if folder_temp_path is None:
     folder_path_problem = f'Unable to find artifacts folder called "{ folder_temp_name }".'
-    _log(f'🤕 ALKiln ERROR ALKP0019: { folder_path_problem }')
     root_path = None
     folder_name = None
     folder_path = None
@@ -2947,7 +2933,7 @@ code: |
 ---
 id: default folder_path_problem
 code: |
-  folder_path_problem = ""
+  folder_path_problem = ""  # Default
 ---
 # Need zip_name_no_ext to save the new zip file name without ".zip"
 # Might be able to get rid of this.
@@ -2994,7 +2980,7 @@ code: |
     else:
       zip_path = get_existing_path( file_name=zip_name )
       if zip_path is None:
-        zip_path_problem = f'Unable to find a file called "{ zip_name }".'
+        zip_path_problem = f'When looking for the artifacts zip file, unable to find a file called "{ zip_name }".'
         _log(f'🤕 ALKiln ERROR: { zip_path_problem }')
   
     return { "path": zip_path, "problem": zip_path_problem }
