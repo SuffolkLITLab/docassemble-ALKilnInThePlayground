@@ -25,26 +25,24 @@
 :root {
   --up: -3px;
   --upp: -5px;
-  --r: 2px;
-  --l: 4px;
+  --l: 2px;
+  --r: 4px;
 }
-
 @keyframes vibrate {
   0%  {transform: translateY(var(--up));}
-  15% {transform: translateY(var(--upp)) translateX(var(--r));}
+  15% {transform: translateY(var(--upp)) translateX(var(--l));}
   25% {transform: translateY(var(--up));}
-  30% {transform: translateY(var(--upp)) translateX(var(--l));}
+  30% {transform: translateY(var(--upp)) translateX(var(--r));}
   35% {transform: translateY(var(--up));}
-  38% {transform: translateY(var(--upp)) translateX(var(--r));}
+  38% {transform: translateY(var(--upp)) translateX(var(--l));}
   41% {transform: translateY(var(--up));}
-  42% {transform: translateY(var(--upp)) translateX(var(--l));}
+  42% {transform: translateY(var(--upp)) translateX(var(--r));}
   43% {transform: translateY(var(--up));}
-  45% {transform: translateY(var(--upp)) translateX(var(--r));}
+  45% {transform: translateY(var(--upp)) translateX(var(--l));}
   47% {transform: translateY(var(--up));}
   50% {transform: translateY(var(--upp)) translateX(var(--r));}
   55% {transform: translateY(var(--up));}
-  65% {transform: translateY(var(--upp)) translateX(var(--r));}
-  85% {transform: translateY(var(--upp)) translateX(var(--r));}
+  65% {transform: translateY(var(--upp)) translateX(var(--l));}
   90% {transform: translate(0);}
 }
 

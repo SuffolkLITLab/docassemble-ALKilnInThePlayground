@@ -9,9 +9,11 @@
 # TODO: There is a box shadow above accordion items that hides the gap between the accordion item and the header above it. That's slow. Some exploration has shown it's more challenging to improve than expected. Using a new element created just for that purpose isn't enough if it starts as unrendered.
 # TODO: replace `raise`s with error screens
 # TODO: Add more ids, including for code blocks
-# TODO: Add more useful information to the "My interviews" page with `set_parts()` to change metadata. Name of project and tags used. Maybe time, since AL doesn't show seconds on that page. Maybe the latter only matters to us.
 # TODO: Research `npm ping` for npm check instead of try/catch for connection failure
 # TODO: Research check for invalid alkiln install. This seems to require testing multiple angles. `npm ls` in alkiln's folder for direct dependencies with "npm error". Maybe `npm audit signatures` maybe in .npm-global/lib/node_modules and/or maybe in alkiln's folder. Maybe `npm explain --prefix /var/www/.npm-global` (or maybe in alkiln), though I'm not sure that's the right command. To check npm itself, maybe `npm doctor --prefix /var/www/.npm-global`, though we have some stuff that already errors despite working (versions and global bin folder not in PATH).
+# TODO: Consider url args to set `author_cancelled_install`, `failed_install`, etc. when starting a new interview to persist status of ALKiln package. Explore server-wide options for those.
+# TODO: Only install ALKiln when no one on the server is running tests. Conversley, don't run tests until an ALKiln install on the server is finished.
+# TODO: Restore background color after comfort button.
 # Discuss: Show the user's username to them? Not great for recording anonymized runs through the interview, but it would put the information front and center. People have gotten confused before when exploring other user's sessions and, I believe, Projects.
 # Discuss: Allow authors to run tests in other people's Playgrounds when they have permissions to open sessions and Playgrounds of other users while they are exploring those Playgrounds.
 # Research: exactly how do ids on code blocks affect the cache
@@ -56,6 +58,57 @@ subquestion: |
   </div>
   <div id="frustration_result" style="display: none;">Ok, it does do this stuff. That's all, though.</div>
 ---
+comment: |
+  ## Behavior for installation state:
+
+  For now, don't worry about cross-interview persistence
+
+  Install wait screen (source of state):
+    Loading
+      (reset all install-state-related vars)
+      author_cancelled_install -> False
+      killing_install/did_kill_install -> False
+      failed_install -> False
+    Installing
+      No change
+    Cancel
+      (visual change on install waiting screen)
+      author_cancelled_install -> True
+      (did_kill_install is already False)
+    Wait for cancellation
+      No change
+    Cancelled
+      did_kill_install -> True
+    Fail
+      if not author_cancelled_install: (?)
+        failed_install -> True
+      or
+      failed_install -> True (?)
+    Succeed
+      all already False
+    Leaving
+  
+  Pick version screen:
+    Loading
+    Current version is questionable
+      Author cancelled
+      or Can't get version
+      or Otherwise invalid
+    Current version is fine
+    Leaving
+  
+  Pick Project screen:
+    Loading
+    Current version is questionable
+      Author cancelled
+      or Can't get version
+      or Otherwise invalid
+    Current version is fine
+    Leaving
+---
+code: |
+  killing_install = False  # Default
+---
 mandatory: True
 id: interview order
 need:
@@ -65,12 +118,15 @@ need:
   - get_installed_version
   - test_pid_already_terminated
   - get_test_pid
-  - terminate_process
+  - kill_process
   - delete_kip_session_dir
-  - stopped_install_early
-  - redo_after_stopped_install
-  - did_terminate_install
-  - get_install_process_pid
+  - failed_install
+  - author_cancelled_install
+  - redo_after_questionable_install
+  - did_kill_install
+  - get_install_process_id
+  - did_start_alkiln_install
+  - is_first_install_page_load
 code: |
   ## Test features
   # frustration_test
@@ -85,89 +141,95 @@ code: |
   if len( dangerous_config_var_names ) > 0:
     warn_about_dangerous_config_vars
   
-  if redo_after_stopped_install:
-    invalid_install = True
-    undefine_install_task = True
-    require_restart_install_timer = True
-    undefine( 'ask_version' )
-    redo_after_stopped_install = False
-  
-  if undefine_install_task:
+  if redo_after_questionable_install:
     undefine( 'install_task' )
-    undefine_install_task = False
+    undefine( 'ask_version' )  # Discuss: `reconsider` instead?
+    # undefine_install_task = True
+    # require_restart_install_timer = True
+    redo_after_questionable_install = False
+  
+  # if undefine_install_task:
+  #   undefine( 'install_task' )
+  #   undefine_install_task = False
 
   _debug( f"""url_args: { url_args }""" )
   if url_args.get( "skip_install", False ) != "true" and version_error == "":
     ask_version
-  
-    if npm_connection_msg == "ok" and ( wants_install or invalid_install ):
 
+    # Kill installation if author cancelled. Avoid adding another background action
+    if author_cancelled_install and not did_kill_install:
+  
+      # Repeat on check-in as the pid might not exist the first few times
+      # Discuss: Is the da "check-in" loop enough to deal with this?
+      install_pid = get_install_process_id()
+      if install_pid != None:  # May not exist yet
+        # Delete install pid in case author cancels future installation
+        # TODO: Delete one value instead of deleting the directory 🙄
+        delete_kip_session_dir()
+        # Killing halts the install_alkiln background action
+        # Not sure why a blocking op here freezes the spinner on the page
+        kill_process( install_pid )["ok"]
+        did_kill_install = True
+  
+      if not did_kill_install:
+        wait_for_install
+      
+      redo_after_questionable_install = True
+  
+    if npm_connection_msg == "ok" and wants_install: #
+
+      # Discuss: Check on 'Could not get' in get_installed_version()?
+      # Discuss: Check failed_install?
+      
       # alkiln_current_version = "5.15.0" # testing
       # alkip_version = "1.3.1"  # testing
   
-      # Show pre-installation ALKiln announcements if needed
+      # Show post-installation ALKiln announcements if needed
       if ( post_install_request_news != None ):
         read_the_news
 
+      # TODO: Make sure we're showing the author the correct info about problem
       if 'Could not get' in get_installed_version():
-        reconsider( version_to_install )
+        reconsider( ask_version )
   
-      # Don't install if not needed
       # Discuss: for some reason (at least when I switch between online and offline) we sometimes go to the install screen when going back to restart with a version number of "None". There are other shenanigans that happen when going back with `restart`. We have a lot to explore there. There are enough hiccups that it may be worth adding a warning when the author has been offline.
-      if ( started_with_different_version or invalid_install ) and version_to_install:
-  
-        # Prevent repeating the task
-        if not stopped_install_early:
-          install_task
-    
-        if stopped_install_early and not did_terminate_install:
-          # Repeat on check-in as the pid might not exist the first few times
-          # Discuss: Is the da "check-in" loop enough to deal with this?
-          install_pid = get_install_process_pid()
-          if install_pid != None:
-            # Note: This halts the install_alkiln background action too
-            did_terminate_install = terminate_process( install_pid )["ok"]
-            delete_kip_session_dir()
-  
-        # `.wait()` could cause a timeout
-        # If we don't _always_ wait for install task to be ready, code will
-        # _Always_ wait for install task to be ready, otherwise when task
-        # does finish da will reset some values and then rerun. E.g.
-        # `stopped_early`, if True, will return to default False. Temp files
-        # will not regenerate. It causes file not found errors. For
-        # example, this code would break:
-        # `if stopped_early or test_run_output.ready()` Instead:
-        if install_task.ready():
-          if install_task.failed():
-            # If failed after invalid install, even if it was a different
-            # failure, start _again_ again. After an invalid install, we
-            # _really_ have to be sure to install.
-            if stopped_install_early or invalid_install:
-              redo_after_stopped_install = True
-            # Otherwise just show a failure message
-            else:
-              invalid_install = False
-              stopped_install_early = False
-              flag_failed_installation
-  
-          elif not install_task.failed():
-            invalid_install = False
-            stopped_install_early = False
-            # Avoid returning to this block (avoids running related functions)
-            wants_install = False
 
-        # Show install waiting screen
+      # TODO: remove started_with_different_version in case of corrupted install
+
+      # Research: May not need this check anymore
+      if version_to_install: #
+
+        if is_first_install_page_load:
+          author_cancelled_install = False
+          # killing_install = False  # Not yet implemented
+          did_kill_install = False
+          failed_install = False
+          install_start = current_datetime()
+          is_first_install_page_load = False
+        
+        if not install_task.ready(): #
+          # if require_restart_install_timer: #
+          #   restart_install_timer #
+          wait_for_install #
         else:
-          if require_restart_install_timer:
-            restart_install_timer
-          wait_for_install
+          # Because of this, we MUST avoid looping here unless installing again
+          is_first_install_page_load = True  # Reset
+        
+        if install_task.failed(): #
+          failed_install = True #
+          redo_after_questionable_install = True #
+        else: #
+          failed_install = False #
+          # Avoid returning here (avoids re-triggering functions and tasks)
+          wants_install = False #
+
     
   project_name
   tag_expression
   set_parts( title=f"ALKiln { project_name } tests" )
   set_parts( subtitle=tag_expression )
 
-  _debug("Setting up")
+  _debug("💡 ALKiln INFO: Setting up")
   if (
     ( artifacts_folder_and_runtime_config_final_status == 'done' and artifacts_errored )
     or ( validate_feature_files_final_status == 'done' and validation_errored )
@@ -200,7 +262,7 @@ code: |
       test_pid = get_test_pid()
       if test_pid != None:
         # Note: This completes the alkiln test background action too
-        test_pid_already_terminated = terminate_process( test_pid )["ok"]
+        test_pid_already_terminated = kill_process( test_pid )["ok"]
         delete_kip_session_dir()
 
     # _Always_ wait for install task to be ready, otherwise when task does
@@ -230,6 +292,9 @@ code: |
 ---
 code: |
   setup_outputs = []  # Default
+---
+code: |
+  is_first_install_page_load = True
 ---
 need:
   - root_path
@@ -290,20 +355,20 @@ buttons:
 ---
 event: stop_install_early
 code: |
-  redo_after_stopped_install = True
-  stopped_install_early = True
+  redo_after_questionable_install = True
+  author_cancelled_install = True
 ---
 code: |
-  redo_after_stopped_install = False  # Default
+  redo_after_questionable_install = False  # Default
 ---
 code: |
-  did_terminate_install = False # Default
+  did_kill_install = False # Default
 ---
 code: |
-  invalid_install = False  # Default
+  failed_install = False  # Default
 ---
-code: |
-  undefine_install_task = False  # Default
+# code: |
+#   undefine_install_task = False  # Default
 ---
 if: npm_connection_msg == "ok"
 code: |
@@ -370,18 +435,21 @@ code: |
 ---
 id: which task but with no alkiln installed
 if: |
-  'Could not get' in get_installed_version() or stopped_install_early
+  'Could not get' in get_installed_version() or author_cancelled_install or failed_install
 need:
   - get_installed_version
-  - stopped_install_early
+  - author_cancelled_install
+  - failed_install
 question: |
   Install ALKiln
 subquestion: |
   <div class="alert alert-warning" markdown="1">
-  % if stopped_install_early:
-  It looks like you or someone else may have stopped early when you or they were installing a new version of ALKiln. To be sure that your server has a valid version of ALKiln, we recommend you try to install again.
-  % else:
+  % if not failed_install and not author_cancelled_install:
   We are unable to find a version of ALKiln installed on your server. It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and that installation got interrupted at a bad time. You need a new version of ALKiln.
+  % elif author_cancelled_install:
+  It looks like you or someone else may have stopped early when you or they were installing a new version of ALKiln. To be sure that your server has a valid version of ALKiln, we recommend you try to install again.
+  % elif failed_install:
+  We ran into a problem when we were trying to install ALKiln. To be sure that your server has a valid version of ALKiln, we **strongly** recommend you try to install again.
   % endif
   </div>
 
@@ -424,11 +492,12 @@ comment: |
 id: pick which task, with offline and no alkiln installed
 event: ask_version
 if: |
-  npm_connection_msg != "ok" and ('Could not get' in get_installed_version() or stopped_install_early)
+  npm_connection_msg != "ok" and ('Could not get' in get_installed_version() or author_cancelled_install or failed_install)
 need:
   - npm_connection_msg
   - get_installed_version
-  - stopped_install_early
+  - author_cancelled_install
+  - failed_install
 question: |
   Unable to install ALKiln
 subquestion: |
@@ -449,11 +518,12 @@ action buttons:
 # Discuss: Add explicit refresh button
 id: which task but with prexisting version
 if: |
-  not 'Could not get' in get_installed_version() and not stopped_install_early
+  not 'Could not get' in get_installed_version() and not author_cancelled_install and not failed_install
 need:
   - npm_connection_msg
-  - stopped_install_early
+  - author_cancelled_install
   - get_installed_version
+  - failed_install
 question: |
   ALKiln version
 subquestion: |
@@ -913,6 +983,7 @@ code: |
       raise Exception(f"🤕 ALKiln ERROR: Something unexpected happened when ALKilnInThePlayground tried to finish installing a version of ALKiln. Look above for more information.")
     else:
       log(f"""💡 ALKiln INFO: Finished installing ALKiln v{ action_argument("version") }!""" )
+      background_response(f'💡 ALKiln INFO: Finished installing ALKiln v{ action_argument("version") }')
   
   background_response(f"ALKilnInThePlayground thinks it has already run the `install_alkiln` task. Look in your { worker_log_link } for more information.")
 ---
@@ -1089,14 +1160,10 @@ code: |
 ---
 id: did_start_alkiln_install default
 code: |
-  did_start_alkiln_install = False
+  did_start_alkiln_install = False  # Default
 ---
 code: |
-  stopped_install_early = True
-  flag_failed_installation = True
----
-code: |
-  stopped_install_early = False  # Default
+  author_cancelled_install = False  # Default
 ---
 id: wait page for alkiln install
 prevent going back: True
@@ -1124,7 +1191,9 @@ subquestion: |
   **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }**[BR]
   (Updates about every 10 seconds depending on your server speed)
 
-  % if stop_install_early:
+  % if author_cancelled_install:
+  
+  ${ "Comment: Using `daCheckin()` here should be safe because, da dev says, 'if daCheckin() is called at a time when a prior check-in request is still waiting for a response from the server, it will return without sending a check-in request'." if False else "" }
   
   <div class="alert alert-info" markdown=1>We promise, your server is working on cancelling your installation. These things can take time! Here's a button you can press if that helps, though it doesn't do much `¯\_(ツ)_/¯`</div>
   <div id="frustration">
@@ -1140,19 +1209,15 @@ action buttons:
     icon: window-close
     color: danger
 ---
-# TODO: Explore these install_timer blocks
-code: |
-  require_restart_install_timer = False
+# # TODO: Explore these install_timer blocks
+# code: |
+#   require_restart_install_timer = False  # Default
+# ---
+# event: restart_install_timer
+# code: |
+#   install_start = current_datetime()
+#   require_restart_install_timer = False
 ---
-need:
-  - current_datetime
-event: restart_install_timer
-code: |
-  require_restart_install_timer = False
-  install_start = current_datetime()
----
-need:
-  - current_datetime
 code: |
   install_start = current_datetime()
 ---
@@ -1163,6 +1228,8 @@ code: |
 id: choose project
 need:
   - version_error
+  - author_cancelled_install
+  - failed_install
   - da_log_more_info
   - worker_log_more_info
   - get_installed_version
@@ -1170,37 +1237,31 @@ prevent going back: True
 question: |
   Run ALKiln tests
 subquestion: |
-  % if stopped_install_early or version_error != '':
-  
-  <div class="alert alert-warning">
-  % if stopped_install_early:
-  You started to install a new version of ALKiln and then stopped early. We recommend you try to fully install a new version before running your tests.
-  % elif version_error != '':
-  ALKilnInThePlayground was unable to install a new version of ALKiln. ${ worker_log_more_info }
-  % endif
-
   % if version_error != '':
-  Usually you would have seen an option here to install a different version of ALKiln. We skipped that screen because there was a problem getting the ALKiln package. ${ da_log_more_info }
-  % endif
+  <div class="alert alert-warning" markdown=1>
+  ALKilnInThePlayground was unable to get the list of versions of ALKiln from the servers that store ALKiln's code. Because of that, this tool skipped directly to this page where you can choose which tests to run. ${ da_log_more_info }
   </div>
   
-  Note that this might be a problem with the servers that store ALKiln's code, which are managed by node package manager (npmjs). The <a href="https://status.npmjs.org/">npmjs status page</a> might tell you if many npmjs servers are having trouble.
-  
-  You can still run your tests with the version of ALKiln that you already have, **ALKiln v${ get_installed_version() }**. If you want to use a different version of ALKiln, you will have to try again later.
-  
-  % elif stopped_install_early:
-  <div class="alert alert-warning">
-  You started to install a new version of ALKiln and then stopped early. We recommend you try to fully install a new version before running your tests.
+  The servers that store ALKiln's code are managed by node package manager (npmjs). The <a href="https://status.npmjs.org/">npmjs status page</a> might tell you if some npmjs servers are having trouble.
+
+  Your server says you have **ALKiln v${ get_installed_version() }** installed. You can try to use that version to run your tests.
+
+  % elif author_cancelled_install:
+  <div class="alert alert-warning" markdown=1>
+  You started to install a new version of ALKiln and then stopped early. Your server thinks you have **ALKiln v${ get_installed_version() }** installed. We recommend you try to fully install a new version before running your tests.
   </div>
 
-  You might have **ALKiln v${ get_installed_version() }** at the moment.
-  
+  % elif failed_install:
+  <div class="alert alert-warning" markdown=1>
+  ALKilnInThePlayground failed to install a new version of ALKiln. Your server thinks you have **ALKiln v${ get_installed_version() }** installed. We recommend you try to fully install a new version before running your tests. ${ worker_log_more_info }
+  </div>
+
   % else:
-  You will run these tests with **ALKiln v${ get_installed_version() }**.
+    You will run these tests with **ALKiln v${ get_installed_version() }**.
   
   % endif
-  <div class="alert alert-warning" markdown="1">
   
+  <div class="alert alert-warning" markdown="1">
   While tests are running try to avoid:
   
   - Editing the Project you are testing
@@ -1209,7 +1270,7 @@ subquestion: |
   - Otherwise causing this server to reload, restart, or stop
   </div>
   
-  You can choose to test a Project from your Playground on this server.
+  Choose a Project of yours that has test files. Test files are files in a package's Sources folder that end with `.feature`.
   
 fields:
   - What Project do you want to test?: project_name
@@ -1552,6 +1613,8 @@ subquestion: |
   (Updates about every 10 seconds depending on your server speed)
 
   % if stopped_early:
+  
+  ${ "Comment: Using `daCheckin()` here should be safe because, da dev says, 'if daCheckin() is called at a time when a prior check-in request is still waiting for a response from the server, it will return without sending a check-in request'." if False else "" }
   
   <div class="alert alert-info" markdown=1>The tests are stopping, honest. They really are doing their best. Here's yet another button. It won't do much, but it might help you feel better `(͡◵ Ĺ̯ ͡◵ )`</div>
   <div id="frustration">
@@ -2557,7 +2620,7 @@ content: |
 ---
 id: terminate any subprocess with an id
 code: |
-  def terminate_process( process_id ):
+  def kill_process( process_id ):
     """
     Return True if we did terminate the process identified by process_id.
 
@@ -2726,7 +2789,7 @@ need:
   - alkiln_session_id
   - get_one_json_file_var
 code: |
-  def get_install_process_pid():
+  def get_install_process_id():
     """
     Returns:
         (int|None): The process id or None if we couldn't get the id.
