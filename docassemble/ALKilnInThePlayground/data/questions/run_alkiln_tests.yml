@@ -122,7 +122,7 @@ need:
   - delete_kip_session_dir
   - non_cancellation_install_failure
   - author_cancelled_install
-  - redo_after_questionable_install
+  # - redo_after_questionable_install
   - did_kill_install
   - get_install_process_id
   - did_start_alkiln_install
@@ -141,12 +141,12 @@ code: |
   if len( dangerous_config_var_names ) > 0:
     warn_about_dangerous_config_vars
   
-  if redo_after_questionable_install:
-    undefine( 'install_task' )
-    undefine( 'ask_version' )  # Discuss: `reconsider` instead?
-    # undefine_install_task = True
-    # require_restart_install_timer = True
-    redo_after_questionable_install = False
+  # if redo_after_questionable_install:
+  #   undefine( 'install_task' )
+  #   undefine( 'ask_version' )  # Discuss: `reconsider` instead?
+  #   # undefine_install_task = True
+  #   # require_restart_install_timer = True
+  #   redo_after_questionable_install = False
   
   # if undefine_install_task:
   #   undefine( 'install_task' )
@@ -154,9 +154,14 @@ code: |
 
   _debug( f"""url_args: { url_args }""" )
   if url_args.get( "skip_install", False ) != "true" and npm_version_lists_error == "":
+    _debug(1, "console")
     ask_version
+    _debug(2, "console")
+    
 
     # First handle potential invalid versions of ALKiln
+
+  
     """
     Invalid ALKiln version notes: There are 3 ways in which an ALKiln installation can be invalid.
     1. Invalid: `get_installed_version()` can fail (the first time this package runs on a server, among other reasons). Must install to resolve.
@@ -170,37 +175,54 @@ code: |
 
     # Definitiely invalid version of ALKiln
     if non_cancellation_install_failure or 'Could not get' in get_installed_version():
+      _debug(3, "console")
       # Show the first screen again, and with relevant information
-      undefine( "ask_version" )
+      reconsider( "ask_version" )
+      _debug(4, "console")
     
     # Kill installation if author cancelled. Avoid adding another background action
     if author_cancelled_install and not did_kill_install:
   
       _debug(f"💡 ALKiln INFO: Starting to cancel installation of ALKiln v{ version_to_install }")
-  
-      # Research: Repeat on check-in as the pid might not exist the first few times
+
+      # Need to loop as pid might not exist the first few times
+      # Research: Does check-in repeat?
+      # Guess from behavior: Check-in will re-loop between separate lines of da code,
+      # but not during blocking code
       install_pid = get_install_process_id()
+      _debug(5, "console")
       if install_pid != None:  # May not exist yet
+        _debug(6, "console")
         # Delete install pid in case author cancels future installation
         # TODO: Delete one value instead of deleting the directory (╥_╥)
         delete_kip_session_dir()
+        _debug(7, "console")
         # Killing halts the install_alkiln background action
         # Not sure why a blocking op here freezes the spinner on the page
         kill_process( install_pid )["ok"]
+        _debug(8, "console")
         did_kill_install = True
-  
+        _debug(9, "console")
+
+      _debug(10, "console")
       if not did_kill_install:
+        _debug(11, "console")
         # Actually I want to pause and go back to the top of the loop and try again...
         # A background action would probably be appropriate, but some servers can't handle
         # multiple background actions
         wait_for_install  # Blocks further action
+        _debug(12, "console")
 
+      _debug(13, "console")
       # Possibly invalid version of ALKiln. Give the author a chance to reinstall.
-      redo_after_questionable_install = True
+      redo_after_questionable_install # = True
+      _debug(14, "console")
 
+    _debug(15, "console")
     # Installing
     if npm_connection_msg == "ok" and wants_install:
-      
+      _debug(16, "console")
+  
       # alkiln_current_version = "5.15.0" # testing
       # alkip_version = "1.3.1"  # testing
   
@@ -215,37 +237,60 @@ code: |
 
       # Research: May not need this check anymore
       if version_to_install:
+        _debug(16, "console")
 
         _debug(f"💡 ALKiln INFO: Starting to install ALKiln v{ version_to_install }")
   
         # if is_first_install_page_load:
         if not defined( "install_task" ):
+          _debug(17, "console")
           # Resets
           author_cancelled_install = False
+          _debug(18, "console")
           # killing_install = False  # Not yet implemented
           did_kill_install = False
+          _debug(19, "console")
           non_cancellation_install_failure = False
+          _debug(20, "console")
           install_start = current_datetime()
+          _debug(21, "console")
           # is_first_install_page_load = False  # Flip flag
-        
+
+        _debug(22, "console")
         if not install_task.ready():
+          _debug(23, "console")
           # if require_restart_install_timer:
           #   restart_install_timer
           wait_for_install
+          _debug(24, "console")
         # else:
         #   # Because of this, we MUST avoid looping here unless installing again
         #   is_first_install_page_load = True  # Reset
-        
+
+        _debug(25, "console")
         if install_task.failed():
+          _debug(26, "console")
           if not author_cancelled_install:
+            _debug(27, "console")
             non_cancellation_install_failure = True
-          redo_after_questionable_install = True
+            _debug(28, "console")
+          _debug(29, "console")
+          # redo_after_questionable_install = True
+          # _debug(29.1, "console")
+          redo_after_questionable_install
+          _debug(30, "console")
         else:
+          _debug(31, "console")
           # Avoid returning here (avoids re-triggering functions and tasks)
           # (they now don't want to install anyway, so it's a little bit correct)
           wants_install = False #
+          _debug(32, "console")
+        _debug(33, "console")
+      _debug(34, "console")
+    _debug(35, "console")
+  _debug(36, "console")
 
-    
+  
   project_name
   tag_expression
   set_parts( title=f"ALKiln { project_name } tests" )
@@ -315,6 +360,19 @@ code: |
 code: |
   setup_outputs = []  # Default
 ---
+reconsider: True
+code: |
+  undefine( 'install_task' )
+  undefine( 'ask_version' )  # Discuss: `reconsider` instead?
+  redo_after_questionable_install = True
+  
+  # if redo_after_questionable_install:
+    # undefine( 'install_task' )
+    # undefine( 'ask_version' )  # Discuss: `reconsider` instead?
+    # # undefine_install_task = True
+    # # require_restart_install_timer = True
+    # redo_after_questionable_install = False
+---
 # code: |
 #   is_first_install_page_load = True
 ---
@@ -377,11 +435,11 @@ buttons:
 ---
 event: stop_install_early
 code: |
-  redo_after_questionable_install = True
+  # redo_after_questionable_install = True
   author_cancelled_install = True
 ---
-code: |
-  redo_after_questionable_install = False  # Default
+# code: |
+#   redo_after_questionable_install = False  # Default
 ---
 code: |
   did_kill_install = False # Default
