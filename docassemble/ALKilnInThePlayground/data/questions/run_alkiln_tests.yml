@@ -11,7 +11,7 @@
 # TODO: Add more ids, including for code blocks
 # TODO: Research `npm ping` for npm check instead of try/catch for connection failure
 # TODO: Research check for invalid alkiln install. This seems to require testing multiple angles. `npm ls` in alkiln's folder for direct dependencies with "npm error". Maybe `npm audit signatures` maybe in .npm-global/lib/node_modules and/or maybe in alkiln's folder. Maybe `npm explain --prefix /var/www/.npm-global` (or maybe in alkiln), though I'm not sure that's the right command. To check npm itself, maybe `npm doctor --prefix /var/www/.npm-global`, though we have some stuff that already errors despite working (versions and global bin folder not in PATH).
-# TODO: Consider url args to set `author_cancelled_install`, `failed_install`, etc. when starting a new interview to persist status of ALKiln package. Explore server-wide options for those.
+# TODO: Consider url args to set `author_cancelled_install`, `non_cancellation_install_failure`, etc. when starting a new interview to persist status of ALKiln package. Explore server-wide options for those.
 # TODO: Only install ALKiln when no one on the server is running tests. Conversley, don't run tests until an ALKiln install on the server is finished.
 # TODO: Restore background color after comfort button.
 # Discuss: Show the user's username to them? Not great for recording anonymized runs through the interview, but it would put the information front and center. People have gotten confused before when exploring other user's sessions and, I believe, Projects.
@@ -68,7 +68,7 @@ comment: |
       (reset all install-state-related vars)
       author_cancelled_install -> False
       killing_install/did_kill_install -> False
-      failed_install -> False
+      non_cancellation_install_failure -> False
     Installing
       No change
     Cancel
@@ -81,9 +81,9 @@ comment: |
       did_kill_install -> True
     Fail
       if not author_cancelled_install: (?)
-        failed_install -> True
+        non_cancellation_install_failure -> True
       or
-      failed_install -> True (?)
+      non_cancellation_install_failure -> True (?)
     Succeed
       all already False
     Leaving
@@ -120,13 +120,13 @@ need:
   - get_test_pid
   - kill_process
   - delete_kip_session_dir
-  - failed_install
+  - non_cancellation_install_failure
   - author_cancelled_install
   - redo_after_questionable_install
   - did_kill_install
   - get_install_process_id
   - did_start_alkiln_install
-  - is_first_install_page_load
+  # - is_first_install_page_load
 code: |
   ## Test features
   # frustration_test
@@ -153,18 +153,36 @@ code: |
   #   undefine_install_task = False
 
   _debug( f"""url_args: { url_args }""" )
-  if url_args.get( "skip_install", False ) != "true" and version_error == "":
+  if url_args.get( "skip_install", False ) != "true" and npm_version_lists_error == "":
     ask_version
 
+    # First handle potential invalid versions of ALKiln
+    """
+    Invalid ALKiln version notes: There are 3 ways in which an ALKiln installation can be invalid.
+    1. Invalid: `get_installed_version()` can fail (the first time this package runs on a server, among other reasons). Must install to resolve.
+    2. Invalid: `non_cancellation_install_failure`. Must install to resolve.
+    3. Unsure: `author_cancelled_install`. Can continue with warnings since the installation may have finished before the author cancelled it.
+
+    This state is not yet persistent across sessions.
+    We must handle the case where an author skips the installation screen.
+    When the author cancels we must kill the installation processes. Note that we want to avoid a background action for that since installation will already be using a background action and some servers don't have room for more than one background action at a time. Radical idea: revoke the installation task. The background action will continue, but we will kill it soon anyway. Make a new background action for killing the installation background action. This is just crazy enough to work!
+    """
+
+    # Definitiely invalid version of ALKiln
+    if non_cancellation_install_failure or 'Could not get' in get_installed_version():
+      # Show the first screen again, and with relevant information
+      undefine( "ask_version" )
+    
     # Kill installation if author cancelled. Avoid adding another background action
     if author_cancelled_install and not did_kill_install:
   
-      # Repeat on check-in as the pid might not exist the first few times
-      # Discuss: Is the da "check-in" loop enough to deal with this?
+      _debug(f"💡 ALKiln INFO: Starting to cancel installation of ALKiln v{ version_to_install }")
+  
+      # Research: Repeat on check-in as the pid might not exist the first few times
       install_pid = get_install_process_id()
       if install_pid != None:  # May not exist yet
         # Delete install pid in case author cancels future installation
-        # TODO: Delete one value instead of deleting the directory 🙄
+        # TODO: Delete one value instead of deleting the directory (╥_╥)
         delete_kip_session_dir()
         # Killing halts the install_alkiln background action
         # Not sure why a blocking op here freezes the spinner on the page
@@ -172,55 +190,59 @@ code: |
         did_kill_install = True
   
       if not did_kill_install:
-        wait_for_install
-      
-      redo_after_questionable_install = True
-  
-    if npm_connection_msg == "ok" and wants_install: #
+        # Actually I want to pause and go back to the top of the loop and try again...
+        # A background action would probably be appropriate, but some servers can't handle
+        # multiple background actions
+        wait_for_install  # Blocks further action
 
-      # Discuss: Check on 'Could not get' in get_installed_version()?
-      # Discuss: Check failed_install?
+      # Possibly invalid version of ALKiln. Give the author a chance to reinstall.
+      redo_after_questionable_install = True
+
+    # Installing
+    if npm_connection_msg == "ok" and wants_install:
       
       # alkiln_current_version = "5.15.0" # testing
       # alkip_version = "1.3.1"  # testing
   
-      # Show post-installation ALKiln announcements if needed
+      # Divert to pre-installation ALKiln notifications if needed
       if ( post_install_request_news != None ):
         read_the_news
-
-      # TODO: Make sure we're showing the author the correct info about problem
-      if 'Could not get' in get_installed_version():
-        reconsider( ask_version )
   
       # Discuss: for some reason (at least when I switch between online and offline) we sometimes go to the install screen when going back to restart with a version number of "None". There are other shenanigans that happen when going back with `restart`. We have a lot to explore there. There are enough hiccups that it may be worth adding a warning when the author has been offline.
 
-      # TODO: remove started_with_different_version in case of corrupted install
+      # TODO: delete started_with_different_version from the rest of the interview.
+      # We must handle questionable installs even if versions look the same.
 
       # Research: May not need this check anymore
-      if version_to_install: #
+      if version_to_install:
 
-        if is_first_install_page_load:
+        _debug(f"💡 ALKiln INFO: Starting to install ALKiln v{ version_to_install }")
+  
+        # if is_first_install_page_load:
+        if not defined( "install_task" ):
+          # Resets
           author_cancelled_install = False
           # killing_install = False  # Not yet implemented
           did_kill_install = False
-          failed_install = False
+          non_cancellation_install_failure = False
           install_start = current_datetime()
-          is_first_install_page_load = False
+          # is_first_install_page_load = False  # Flip flag
         
-        if not install_task.ready(): #
-          # if require_restart_install_timer: #
-          #   restart_install_timer #
-          wait_for_install #
+        if not install_task.ready():
+          # if require_restart_install_timer:
+          #   restart_install_timer
+          wait_for_install
+        # else:
+        #   # Because of this, we MUST avoid looping here unless installing again
+        #   is_first_install_page_load = True  # Reset
+        
+        if install_task.failed():
+          if not author_cancelled_install:
+            non_cancellation_install_failure = True
+          redo_after_questionable_install = True
         else:
-          # Because of this, we MUST avoid looping here unless installing again
-          is_first_install_page_load = True  # Reset
-        
-        if install_task.failed(): #
-          failed_install = True #
-          redo_after_questionable_install = True #
-        else: #
-          failed_install = False #
           # Avoid returning here (avoids re-triggering functions and tasks)
+          # (they now don't want to install anyway, so it's a little bit correct)
           wants_install = False #
 
     
@@ -293,8 +315,8 @@ code: |
 code: |
   setup_outputs = []  # Default
 ---
-code: |
-  is_first_install_page_load = True
+# code: |
+#   is_first_install_page_load = True
 ---
 need:
   - root_path
@@ -365,7 +387,7 @@ code: |
   did_kill_install = False # Default
 ---
 code: |
-  failed_install = False  # Default
+  non_cancellation_install_failure = False  # Default
 ---
 # code: |
 #   undefine_install_task = False  # Default
@@ -417,43 +439,43 @@ code: |
     alkiln_version_list = []
     alkiln_major_versions = []
     alkiln_prerelease_versions = []
-    version_error = result.stderr.decode("utf-8")
+    npm_version_lists_error = result.stderr.decode("utf-8")
   else:
     versions = json.loads(result.stdout.decode())
     filtered = filter_versions_greater_or_equal(reversed(versions), '5.0.0')
     alkiln_major_versions = filtered[ "major" ]
     alkiln_prerelease_versions = filtered[ "pre" ]
     alkiln_version_list = []
-    version_error = ''
+    npm_version_lists_error = ''
 ---
 if: npm_connection_msg != "ok"
 code: |
   alkiln_major_versions = []
   alkiln_prerelease_versions = []
   alkiln_version_list = []
-  version_error = ""
+  npm_version_lists_error = ""
 ---
 id: which task but with no alkiln installed
 if: |
-  'Could not get' in get_installed_version() or author_cancelled_install or failed_install
+  'Could not get' in get_installed_version() or author_cancelled_install or non_cancellation_install_failure
 need:
   - get_installed_version
   - author_cancelled_install
-  - failed_install
+  - non_cancellation_install_failure
 question: |
   Install ALKiln
 subquestion: |
   <div class="alert alert-warning" markdown="1">
-  % if not failed_install and not author_cancelled_install:
-  We are unable to find a version of ALKiln installed on your server. It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and that installation got interrupted at a bad time. You need a new version of ALKiln.
+  % if not non_cancellation_install_failure and not author_cancelled_install:
+  Sorry, ALKilnInThePlayground is unable to find a version of ALKiln installed on your server. It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and that installation got interrupted at a bad time. You need a new version of ALKiln.
   % elif author_cancelled_install:
   It looks like you or someone else may have stopped early when you or they were installing a new version of ALKiln. To be sure that your server has a valid version of ALKiln, we recommend you try to install again.
-  % elif failed_install:
-  We ran into a problem when we were trying to install ALKiln. To be sure that your server has a valid version of ALKiln, we **strongly** recommend you try to install again.
+  % elif non_cancellation_install_failure:
+  Sorry, ALKilnInThePlayground had an error when you last tried to install ALKiln. You must install a new version.
   % endif
   </div>
 
-  ${"The server thinks you have version **" + get_installed_version() + "** of ALKiln installed on your server. " if not "Could not get" in get_installed_version() else "" }Which version of ALKiln do you want to install? The top choice is the most recent version.
+  ${"The server thinks you have version **" + get_installed_version() + "** of ALKiln installed on your server. " if not "Could not get" in get_installed_version() and not non_cancellation_install_failure else "" }Which version of ALKiln do you want to install? The top choice is the most recent version.
 fields:
   - Install a verison of ALKiln: wants_install
     datatype: yesno
@@ -492,12 +514,12 @@ comment: |
 id: pick which task, with offline and no alkiln installed
 event: ask_version
 if: |
-  npm_connection_msg != "ok" and ('Could not get' in get_installed_version() or author_cancelled_install or failed_install)
+  npm_connection_msg != "ok" and ('Could not get' in get_installed_version() or author_cancelled_install or non_cancellation_install_failure)
 need:
   - npm_connection_msg
   - get_installed_version
   - author_cancelled_install
-  - failed_install
+  - non_cancellation_install_failure
 question: |
   Unable to install ALKiln
 subquestion: |
@@ -514,16 +536,17 @@ action buttons:
     icon: undo
     color: warning
 ---
+# TODO: Change pre_install_request... to front_page... and post_install... to pre_install...
 # TODO: (For the future) Don't need `if` around news request I think. Double check.
 # Discuss: Add explicit refresh button
 id: which task but with prexisting version
 if: |
-  not 'Could not get' in get_installed_version() and not author_cancelled_install and not failed_install
+  not 'Could not get' in get_installed_version() and not author_cancelled_install and not non_cancellation_install_failure
 need:
   - npm_connection_msg
   - author_cancelled_install
   - get_installed_version
-  - failed_install
+  - non_cancellation_install_failure
 question: |
   ALKiln version
 subquestion: |
@@ -907,7 +930,7 @@ question: |
 subquestion: |
   This might change your mind about the version you want to install.
 
-  % if version_error == "" and post_install_request_news != None:
+  % if npm_version_lists_error == "" and post_install_request_news != None:
   ${ post_install_request_news_template }
   % endif
 
@@ -1227,17 +1250,18 @@ code: |
 ---
 id: choose project
 need:
-  - version_error
+  - npm_version_lists_error
   - author_cancelled_install
-  - failed_install
+  - non_cancellation_install_failure
   - da_log_more_info
   - worker_log_more_info
   - get_installed_version
+# Research: is non_cancellation_install_failure needed here? Or should the author be prevented from coming here at all under that condition? If the author may land here with an invalid version of ALKiln, we should check for an invalid `get_installed_version()` as well.
 prevent going back: True
 question: |
   Run ALKiln tests
 subquestion: |
-  % if version_error != '':
+  % if npm_version_lists_error != '':
   <div class="alert alert-warning" markdown=1>
   ALKilnInThePlayground was unable to get the list of versions of ALKiln from the servers that store ALKiln's code. Because of that, this tool skipped directly to this page where you can choose which tests to run. ${ da_log_more_info }
   </div>
@@ -1251,9 +1275,9 @@ subquestion: |
   You started to install a new version of ALKiln and then stopped early. Your server thinks you have **ALKiln v${ get_installed_version() }** installed. We recommend you try to fully install a new version before running your tests.
   </div>
 
-  % elif failed_install:
+  % elif non_cancellation_install_failure:
   <div class="alert alert-warning" markdown=1>
-  ALKilnInThePlayground failed to install a new version of ALKiln. Your server thinks you have **ALKiln v${ get_installed_version() }** installed. We recommend you try to fully install a new version before running your tests. ${ worker_log_more_info }
+  ALKilnInThePlayground had an error when you last tried to install ALKiln. You should not even be seeing this page. Your server thinks you have **ALKiln v${ get_installed_version() }** installed, but we **strongly** recommend you try to fully install a new version before running your tests. ${ worker_log_more_info }
   </div>
 
   % else:
