@@ -14,6 +14,7 @@
 # TODO: Consider url args to set `author_cancelled_install`, `non_cancellation_install_failure`, etc. when starting a new interview to persist status of ALKiln package. Explore server-wide options for those.
 # TODO: Only install ALKiln when no one on the server is running tests. Conversley, don't run tests until an ALKiln install on the server is finished.
 # TODO: Restore background color after comfort button.
+# TODO: Match npm error errno -39 npm error ENOTEMPTY: directory not empty (must delete node_modules dir, (no pkg.json), maybe npm cache clean --force? (again, no, and re-install ALKiln)
 # Discuss: Show the user's username to them? Not great for recording anonymized runs through the interview, but it would put the information front and center. People have gotten confused before when exploring other user's sessions and, I believe, Projects.
 # Discuss: Allow authors to run tests in other people's Playgrounds when they have permissions to open sessions and Playgrounds of other users while they are exploring those Playgrounds.
 # Research: exactly how do ids on code blocks affect the cache
@@ -173,17 +174,17 @@ code: |
     When the author cancels we must kill the installation processes. Note that we want to avoid a background action for that since installation will already be using a background action and some servers don't have room for more than one background action at a time. Radical idea: revoke the installation task. The background action will continue, but we will kill it soon anyway. Make a new background action for killing the installation background action. This is just crazy enough to work!
     """
 
-    # Definitiely invalid version of ALKiln
-    if non_cancellation_install_failure or 'Could not get' in get_installed_version():
-      _debug(3, "console")
+    # Unable to continue to test or install
+    if 'Could not get' in get_installed_version():
+      _debug(103, "console")
       # Show the first screen again, and with relevant information
       reconsider( "ask_version" )
-      _debug(4, "console")
+      _debug(104, "console")
     
     # Kill installation if author cancelled. Avoid adding another background action
     if author_cancelled_install and not did_kill_install:
   
-      _debug(f"💡 ALKiln INFO: Starting to cancel installation of ALKiln v{ version_to_install }")
+      _debug(f"💡 ALKiln INFO: Waiting to cancel installation of ALKiln v{ version_to_install }")
 
       # Need to loop as pid might not exist the first few times
       # Research: Does check-in repeat?
@@ -193,6 +194,7 @@ code: |
       _debug(5, "console")
       if install_pid != None:  # May not exist yet
         _debug(6, "console")
+        _debug(f"💡 ALKiln INFO: Starting to cancel installation of ALKiln v{ version_to_install }")
         # Delete install pid in case author cancels future installation
         # TODO: Delete one value instead of deleting the directory (╥_╥)
         delete_kip_session_dir()
@@ -219,7 +221,6 @@ code: |
       _debug(14, "console")
 
     _debug(15, "console")
-    # Installing
     if npm_connection_msg == "ok" and wants_install:
       _debug(16, "console")
   
@@ -236,8 +237,9 @@ code: |
       # We must handle questionable installs even if versions look the same.
 
       # Research: May not need this check anymore
+      # Installing
       if version_to_install:
-        _debug(16, "console")
+        _debug(16.5, "console")
 
         _debug(f"💡 ALKiln INFO: Starting to install ALKiln v{ version_to_install }")
   
@@ -270,6 +272,9 @@ code: |
         _debug(25, "console")
         if install_task.failed():
           _debug(26, "console")
+          # Research: if the author did cancel install, there
+          # might have been an unrelated failure prior to that.
+          # How do we detect that?
           if not author_cancelled_install:
             _debug(27, "console")
             non_cancellation_install_failure = True
@@ -433,7 +438,7 @@ buttons:
 # Installation
 ####################################
 ---
-event: stop_install_early
+event: cancel_install
 code: |
   # redo_after_questionable_install = True
   author_cancelled_install = True
@@ -526,10 +531,10 @@ subquestion: |
   <div class="alert alert-warning" markdown="1">
   % if not non_cancellation_install_failure and not author_cancelled_install:
   Sorry, ALKilnInThePlayground is unable to find a version of ALKiln installed on your server. It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and that installation got interrupted at a bad time. You need a new version of ALKiln.
-  % elif author_cancelled_install:
-  It looks like you or someone else may have stopped early when you or they were installing a new version of ALKiln. To be sure that your server has a valid version of ALKiln, we recommend you try to install again.
   % elif non_cancellation_install_failure:
   Sorry, ALKilnInThePlayground had an error when you last tried to install ALKiln. You must install a new version.
+  % elif author_cancelled_install:
+  It looks like you or someone else may have stopped early when you or they were installing a new version of ALKiln. To be sure that your server has a valid version of ALKiln, we recommend you try to install again.
   % endif
   </div>
 
@@ -585,7 +590,7 @@ subquestion: |
   Unfortunately ALKilnInThePlayground is unable to install ALKiln right now. ${ npm_connection_msg }
   </div>
 
-  It also looks like you either don't have ALKiln installed yet or perhaps a previous installation of ALKiln got messed up. For example, someone may have started installing a version and the installation got interrupted at an unfortunate time.
+  It also looks like you either don't have ALKiln installed yet or maybe a previous installation of ALKiln got messed up. For example, someone may have started installing a version and the installation got interrupted at a bad time.
 
   You will have to run tests later.
 action buttons:
@@ -759,7 +764,7 @@ code: |
     if packages.returncode != 0:
       _log('🤕 ALKiln ERROR ALKP0003: getting this server\'s currently installed ALKiln version:')
       _log(f'Error code: { packages.returncode }')
-      _log( packages.stderr.decode("utf-8") )
+      _log( f"stderr: { packages.stderr.decode("utf-8") }" )
       server_version = f"Could not get this server's version of ALKiln. ALKilnInThePlayground got an error instead. { da_log_more_info }"
     else:
       pattern = re.compile(r'suffolklitlab/alkiln@(\d.*)$')
@@ -881,7 +886,7 @@ code: |
       _debug(f"Ran news subprocess")
   
       if news_subprocess.returncode != 0:
-        news_err_msg = news_subprocess.stderr.decode('utf-8')
+        news_err_msg = f"stderr: { news_subprocess.stderr.decode('utf-8') }"
         _log('🖊️ ALKiln NOTE: Skipped getting news bulletin from ALKiln')
         _debug( news_err_msg )
         preprint = None
@@ -1059,7 +1064,7 @@ code: |
     save_kip_session_vars({ "install_pid": install_pid })
 
     install_finish_data = try_to_finish_install( install_process, max_run_time )
-    if not install_finish_data["ok"]:
+    if not install_finish_data or not install_finish_data["ok"]:
       # This should trigger `.failed()` which has its own screens
       raise Exception(f"🤕 ALKiln ERROR: Something unexpected happened when ALKilnInThePlayground tried to finish installing a version of ALKiln. Look above for more information.")
     else:
@@ -1192,7 +1197,7 @@ code: |
 
     finally:
 
-      # Force process to terminate if needed
+      # Kill process if it's still alive (timed out, etc.)
       try:
         if install_process and install_pid:
           # We have to terminate this process ourselves because
@@ -1232,7 +1237,7 @@ code: |
       stderr = install_result[1].decode('utf-8')
       if stderr:
         ok = False
-        log(f"""🔎 ALKiln WARNING: { stderr }""")
+        log(f"""🔎 ALKiln WARNING: stderr: { stderr }""")
       install_output = "\n".join([ stdout, stderr ])
   
     log('💡 ALKiln INFO: ALKiln installation finished, for good or ill.')
@@ -1286,9 +1291,10 @@ subquestion: |
 
 action buttons:
   - label: Cancel and try again
-    action: stop_install_early
+    action: cancel_install
     icon: window-close
     color: danger
+    show if: not author_cancelled_install
 ---
 # # TODO: Explore these install_timer blocks
 # code: |
@@ -1328,14 +1334,14 @@ subquestion: |
 
   Your server says you have **ALKiln v${ get_installed_version() }** installed. You can try to use that version to run your tests.
 
-  % elif author_cancelled_install:
-  <div class="alert alert-warning" markdown=1>
-  You started to install a new version of ALKiln and then stopped early. Your server thinks you have **ALKiln v${ get_installed_version() }** installed. We recommend you try to fully install a new version before running your tests.
-  </div>
-
   % elif non_cancellation_install_failure:
   <div class="alert alert-warning" markdown=1>
   ALKilnInThePlayground had an error when you last tried to install ALKiln. You should not even be seeing this page. Your server thinks you have **ALKiln v${ get_installed_version() }** installed, but we **strongly** recommend you try to fully install a new version before running your tests. ${ worker_log_more_info }
+  </div>
+
+  % elif author_cancelled_install:
+  <div class="alert alert-warning" markdown=1>
+  You started to install a new version of ALKiln and then stopped early. Your server thinks you have **ALKiln v${ get_installed_version() }** installed. We recommend you try to fully install a new version before running your tests.
   </div>
 
   % else:
@@ -2187,7 +2193,7 @@ comment: |
       _log( f'🤕 ALKiln ERROR: error zipping generated scenarios at "{ folder_path }" to "{ gen.zip_path }":' )
   
     if zip_process.returncode != 0:
-      _log( zip_process.stderr.decode("utf-8") )
+      _log( f"stderr: { zip_process.stderr.decode("utf-8") }" )
     elif zip_data[ "problem" ] != "":
       _log( zip_data[ "problem" ] )
   
