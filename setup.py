@@ -53,7 +53,7 @@ setup(name='docassemble.ALKilnInThePlayground',
       license='MIT',
       url='https://docassemble.org',
       packages=find_namespace_packages(),
-      install_requires=[],
+      install_requires=['pathlib>=1.0.1'],
       zip_safe=False,
       package_data=find_package_data(where='docassemble/ALKilnInThePlayground/', package='docassemble.ALKilnInThePlayground'),
      )

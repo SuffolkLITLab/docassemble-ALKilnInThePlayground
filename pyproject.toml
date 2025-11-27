@@ -17,7 +17,9 @@ readme = "README.md"
 authors = [
     { name = "plocket", email = "52798256+plocket@users.noreply.github.com" },
 ]
-dependencies = []
+dependencies = [
+    "pathlib>=1.0.1",
+]
 
 [project.urls]
 Homepage = "https://docassemble.org"
