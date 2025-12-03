@@ -43,19 +43,35 @@ Format:
 -
 -->
 
-## [1.4.1] - 2025-11-01
+## [Unreleased]
 
 ### Added
--
+- "resets.yml" to allow dangerous people to do dangerous resets, like deleting a config file and the node_modules folder.
+- New UI for cancelling installing and canceling tests
 
 ### Changed
-- Change some errors to warnings
+- Do more clean up when installing if needed
+
+### Fixed
+- Asynchronous behavior of cancelling installation and cancelling tests
+
+## [1.4.2] - 2025-11-01
+
+### Fixed
+
+- Fix typo
+
+## [1.4.1] - 2025-11-01
+
+### Changed
 - Stop functional buttons from wrapping
+- Change some errors to warnings
 
 ### Deprecated
 - Deprecating versions of ALKiln below 5.15.0 at this point.
 
 ### Fixed
+- Stop relying on celery revoke to cancel subprocesses.
 - Fix "no scenario output" text was showing when there is indeed output. See [#66](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/66).
 - Fix padding was missing from console output container (and other styles). Turns out we need the page to have `#daform` on it for some styles to take effect and that's one of them. Added `button` to that `show_output` to force it to have that id. It seems sub-optimal. See [#64](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/64).
 - Fix generated file accordion items' box shadows are overlapped their previous siblings. That should close [#63](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/63) as well. See [#62](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/62).

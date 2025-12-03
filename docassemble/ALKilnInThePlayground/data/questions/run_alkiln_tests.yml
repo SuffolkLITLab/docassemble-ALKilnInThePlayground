@@ -60,35 +60,51 @@ subquestion: |
   <div id="frustration_result" style="display: none;">Ok, it does do this stuff. That's all, though.</div>
 ---
 comment: |
+  Key da concepts:
+  - Can't set state in same block order prior to the first use of state. Can only set default/starting values externally.
+  - After finishing a background action, guard it with a flag?
+  - Hypothesis: During check-in, da will re-run da execution-order-type lines, but will get blocked by code running in python functions the da code calls
+
   ## Behavior for installation state:
 
   For now, don't worry about cross-interview persistence
 
   Install wait screen (source of state):
     Loading
-      (reset all install-state-related vars)
-      author_cancelled_install -> False
-      killing_install/did_kill_install -> False
-      non_cancellation_install_failure -> False
-    Installing
+      First load
+        (reset all install-state-related vars)
+        author_cancelled_install -> False
+        killing_install -> False
+        finished_kill_install -> False
+        failed_install -> False
+      Reload after check-in
+        Change nothing
+    Start installing
       No change
     Cancel
       (visual change on install waiting screen)
       author_cancelled_install -> True
-      (did_kill_install is already False)
+      (finished_kill_install is already False)
+      Kill installation process
+        start killing
+        killing_install -> True
+        avoid re-killing, but don't move on
+      Finished killing
+        finished_kill_install -> True
+        killing_install -> False
     Wait for cancellation
       No change
     Cancelled
-      did_kill_install -> True
+      finished_kill_install -> True
     Fail
       if not author_cancelled_install: (?)
-        non_cancellation_install_failure -> True
+        failed_install -> True
       or
-      non_cancellation_install_failure -> True (?)
+      failed_install -> True (?)
     Succeed
       all already False
     Leaving
-  
+
   Pick version screen:
     Loading
     Current version is questionable
@@ -96,8 +112,10 @@ comment: |
       or Can't get version
       or Otherwise invalid
     Current version is fine
+    Chose to install
+    Chose to SKIP installing
     Leaving
-  
+
   Pick Project screen:
     Loading
     Current version is questionable
@@ -173,13 +191,6 @@ code: |
     We must handle the case where an author skips the installation screen.
     When the author cancels we must kill the installation processes. Note that we want to avoid a background action for that since installation will already be using a background action and some servers don't have room for more than one background action at a time. Radical idea: revoke the installation task. The background action will continue, but we will kill it soon anyway. Make a new background action for killing the installation background action. This is just crazy enough to work!
     """
-
-    # Unable to continue to test or install
-    if 'Could not get' in get_installed_version():
-      _debug(103, "console")
-      # Show the first screen again, and with relevant information
-      reconsider( "ask_version" )
-      _debug(104, "console")
     
     # Kill installation if author cancelled. Avoid adding another background action
     if author_cancelled_install and not did_kill_install:
@@ -291,6 +302,14 @@ code: |
           wants_install = False #
           _debug(32, "console")
         _debug(33, "console")
+        
+        # Unable to continue to test or install
+        if 'Could not get' in get_installed_version():
+          _debug(103, "console")
+          # Show the first screen again, and with relevant information
+          reconsider( "ask_version" )
+          _debug(104, "console")
+  
       _debug(34, "console")
     _debug(35, "console")
   _debug(36, "console")
