@@ -134,6 +134,7 @@ need:
   - npm_connection_msg
   - _log
   - _debug
+  - alkiln_session_id
   - get_installed_version
   - test_pid_already_terminated
   - get_test_pid
@@ -154,7 +155,7 @@ code: |
   if not user_has_privilege( ['admin', 'developer'] ):
     ask_to_log_in
 
-  # TODO: Refactor to avoid using `test_output` when `stopped_early` so we can
+  # TODO: Refactor to avoid using `tests_std` when `stopped_early` so we can
   # add a check up here for `stopped_early` and bypass everything else.
   
   if len( dangerous_config_var_names ) > 0:
@@ -191,6 +192,8 @@ code: |
     We must handle the case where an author skips the installation screen.
     When the author cancels we must kill the installation processes. Note that we want to avoid a background action for that since installation will already be using a background action and some servers don't have room for more than one background action at a time. Radical idea: revoke the installation task. The background action will continue, but we will kill it soon anyway. Make a new background action for killing the installation background action. This is just crazy enough to work!
     """
+
+    # @@@ TODO: Save the cancel flag to the file here, cancel the action inside installation
     
     # Kill installation if author cancelled. Avoid adding another background action
     if author_cancelled_install and not did_kill_install:
@@ -302,17 +305,17 @@ code: |
           wants_install = False #
           _debug(32, "console")
         _debug(33, "console")
-        
-        # Unable to continue to test or install
-        if 'Could not get' in get_installed_version():
-          _debug(103, "console")
-          # Show the first screen again, and with relevant information
-          reconsider( "ask_version" )
-          _debug(104, "console")
   
       _debug(34, "console")
     _debug(35, "console")
   _debug(36, "console")
+        
+  # Unable to continue to test
+  if 'Could not get' in get_installed_version():
+    _debug(103, "console")
+    # Show the first screen again, and with relevant information
+    reconsider( "ask_version" )
+    _debug(104, "console")
 
   
   project_name
@@ -461,6 +464,9 @@ event: cancel_install
 code: |
   # redo_after_questionable_install = True
   author_cancelled_install = True
+
+  # Create or use session file
+  # Set canceling to True
 ---
 # code: |
 #   redo_after_questionable_install = False  # Default
@@ -1045,6 +1051,7 @@ need:
   - save_kip_session_vars
   - try_to_finish_install
   - worker_log_link
+  - get_kip_session_val
 code: |
   # TODO: How do we detect if someone _else_ on the server didn't properly finish installing ALKiln and that there will be cache problems?
 
@@ -1066,6 +1073,39 @@ code: |
     returncode = None
   
     did_start_alkiln_install = True
+  
+    # import subprocess
+    # import sys
+
+    # # # https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/74
+
+    # _debug("Installing ALKiln is in development")
+
+    # # Popen is a context manager and you can use `with`
+    # try:
+    #  with subprocess.Popen(["echo", "Hello"], stdout=PIPE) as install_process:
+    #    # log.write(proc.stdout.read())
+    #    while install_process.poll() is None:
+    #        # Check file
+    #        should_cancel = get_kip_session_val( "should_cancel_installation" )
+    #        if should_cancel:
+    #          install_process.terminate()
+    #        time.sleep(0.5)
+    # except Timeout as timeout:
+    #   pass
+    # except Exception as timeout:
+    #   pass
+    
+    # with open("test.log", "wb") as f:
+    #     process = subprocess.Popen(your_command, stdout=subprocess.PIPE)
+    #     for c in iter(lambda: process.stdout.read(1), b""):
+    #         sys.stdout.buffer.write(c)
+    #         f.buffer.write(c)
+  
+    # @@@ TODO: use bash script
+  
+    # install_attempt_result = install_kiln( action_argument("version") )
+  
     install_attempt_result = try_to_start_install( action_argument("version") )
 
     if not install_attempt_result["ok"]:
@@ -1075,14 +1115,14 @@ code: |
 
     install_process = install_attempt_result["result"]
     install_pid = install_process.pid
-    max_run_time = 60 * 5  # seconds
+    max_seconds = 60 * 5  # seconds
     # Always log pid of processes so admins can terminate them manually if needed
-    log(f"""💡 ALKiln INFO: Installing ALKiln v{ action_argument("version") } with process ID { install_pid }. This process will run for a maximum of { max_run_time } seconds.""" )
+    log(f"""💡 ALKiln INFO: Installing ALKiln v{ action_argument("version") } with process ID { install_pid }. This process will run for a maximum of { max_seconds } seconds.""" )
 
     # Try to store a process id to stop/terminate early if needed
     save_kip_session_vars({ "install_pid": install_pid })
 
-    install_finish_data = try_to_finish_install( install_process, max_run_time )
+    install_finish_data = try_to_finish_install( install_process, max_seconds )
     if not install_finish_data or not install_finish_data["ok"]:
       # This should trigger `.failed()` which has its own screens
       raise Exception(f"🤕 ALKiln ERROR: Something unexpected happened when ALKilnInThePlayground tried to finish installing a version of ALKiln. Look above for more information.")
@@ -1178,7 +1218,7 @@ code: |
   import subprocess
   import traceback
   
-  def try_to_finish_install( install_process, max_run_time ):
+  def try_to_finish_install( install_process, max_seconds ):
     """
     Return the status, message, and output of `install_process`.
     """
@@ -1198,12 +1238,12 @@ code: |
 
       install_pid = install_process.pid
       # Get `(stdout_data, stderr_data)`
-      install_result = install_process.communicate( timeout=max_run_time )
+      install_result = install_process.communicate( timeout=max_seconds )
       returncode = install_process.returncode
 
     except subprocess.TimeoutExpired:
       ok = False
-      message = f"""The ALKiln installation process with the ID { install_pid } ran for over { date_difference( starting=process_wait_start_time, ending=current_datetime() ).seconds } seconds. The maximum time allowed is { max_run_time } seconds."""
+      message = f"""The ALKiln installation process with the ID { install_pid } ran for over { date_difference( starting=process_wait_start_time, ending=current_datetime() ).seconds } seconds. The maximum time allowed is { max_seconds } seconds."""
       log( f"""🤕 ALKiln ERROR: { message }""" )
       messages.append( message )
 
@@ -1518,6 +1558,7 @@ need:
 code: |
   import subprocess
   import signal
+  import traceback
   import os
 
   cmd_exists = has_command("alkiln-run")
@@ -1526,9 +1567,12 @@ code: |
 
   # if statement for idempotency - ensure tests are only run once
   if not has_started_tests:
-    returncode = None
-    test_output = None
+    tests_process = None
     test_run_pid = None
+    returncode = None
+    tests_std = None
+    tests_outputs = []
+    timeout_msg = None
   
     # Ensure that files in the 'sources' folder of all projects are
     # cached in /tmp for S3 and such server configurations so that
@@ -1545,7 +1589,7 @@ code: |
     # linux and `.communicate()` `timeout` is in seconds
     # 60 seconds * 60 minutes * 12 hours
     timeout_env_var_name = 'ALKILN_MAX_SECONDS_FOR_PLAYGROUND_TEST_RUN'
-    max_run_time = env_vars.get(
+    max_seconds = env_vars.get(
       timeout_env_var_name,
       60 * 60 * 12
     )
@@ -1577,10 +1621,130 @@ code: |
     
     # Ensure tests don't re-run, even (especially) if they error
     has_started_tests = True
+    did_cancel = False
+      
+    import os
+    import signal
+
+    def terminate( process, max_seconds ):
+      # returncode -15
+      os.killpg( os.getpgid( process.pid ), signal.SIGTERM )
+      process.communicate( timeout=max_seconds )
+  
+      # Discuss: Prefer one of the below?
+      # process.terminate()  # returncode -15
+      # process.kill()  # returncode -9
+
+
+    import traceback
+    import os
+    import signal
+  
+    def kill( process ):
+      """
+      Make sure subprocess and its children are completely closed. Use a
+      low-level interface. Why? One example: if `.communicate` times out
+      the system doesn't complete the process. Research: How would `with`
+      handle that situation?
+
+      Research: Must the process always have been created with
+      `start_new_session` for `os.getpid()` to work?
+
+      Args:
+        process (obj) - Python subprocess, either open or closed
+      Returns:
+        (obj)
+          ok (bool) - True if ran into error-like behavior
+          msgs ([ str ]) - Relevant messages about what happened
+      """
+      ok = True
+      msgs = []
+      try:
+        if process.pid != None:
+          os.killpg( os.getpgid( test_run_pid ), signal.SIGKILL )
+          process.wait()
+        else:
+          ok = False
+          no_pid = f"""🤕 ALKiln ERROR: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by a value in the server config under the `alkiln` key that has a non-string value. It often comes with a message similar to "expected str, bytes or os.PathLike object, not bool". To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository."""
+          log( no_pid )
+          msgs.append( no_pid )
+      except ProcessLookupError as already_terminated_error:
+        # An already terminated process is a happy process
+        pass
+      except Exception as termination_error:
+        ok = False
+        msg1 = """🤕 ALKiln ERROR ALKP0011: Error while stopping tests:"""
+        log( msg1 )
+        msg2 = "\n".join( traceback.format_exception( termination_error ) )
+        log( msg2 )
+        msgs.append( msg1, msg2 )
+  
+      return { "ok": ok, "msgs": msgs }
+  
+    import subprocess
+    import time
     
+    class ProcessTimer():
+      def __init__( self, *pargs, **kwargs ):
+        self.start_time = time.time()
+        self.max_seconds = kwargs.get( "max_seconds", 60 )
+        self.process = pargs[0]
+        self.elapsed = 0
+    
+      def terminated_on_time_out( self ):
+        self.elapsed = time.time() - self.start_time
+        if self.elapsed > self.max_seconds:
+          msg = f"🤕 ALKiln ERROR: The process with the pid { process.pid } took too long ({ elapsed_time } seconds)."
+          log( msg )
+          terminate( self.process, self.max_seconds )  # Discuss: Move this up?
+          return ( True, msg )
+        return ( False, "" )
+      
+
+    def run_with_cancel( process, cancel_key, max_seconds=120 ):
+  
+      should_cancel = False
+      did_cancel = False
+      did_timeout = False
+      msgs = []
+  
+      proc_timer = ProcessTimer(tests_process, max_seconds=max_seconds)
+      while process.poll() is None:
+
+        # If this timed out already and still looping, maybe process
+        # still lives
+        if did_timeout:
+          kill( process )
+
+        did_timeout, timeout_msg = proc_timer.terminated_on_time_out()
+        if did_timeout:
+          msgs.append( timeout_msg )
+          break
+        
+        should_cancel = get_kip_session_val( cancel_key )
+        if should_cancel:
+          did_cancel = True
+          save_kip_session_vars({ cancel_key: False })  # reset
+          terminate( process, max_seconds )
+  
+        time.sleep(.5)
+
+      # Wait for process to finish or timeout
+      # Get output tuple: `(stdout_data, stderr_data)`
+      stds = process.communicate( timeout=max_seconds )
+      return { "process": process, "stds": stds, "did_cancel": did_cancel, "did_timeout": did_timeout, "msgs": msgs }
+
+    # ==========================
+  
     # Run the tests
+    tests_process_errored = False
     try:
-      process = subprocess.Popen(
+      tests_process = None
+      start_time = time.time()
+  
+      # Popen is a context manager and you can use `with`. `with` will
+      # close when the process and the code inside both finish executing.
+      with subprocess.Popen(
         to_run,
         start_new_session=True,
         stdout=subprocess.PIPE,
@@ -1589,106 +1753,186 @@ code: |
         # Currently "/tmp" is the value da already gives for cwd (in background
         # actions only as far as we can tell), but it may change ¯\_(ツ)_/¯
         cwd=root_path
-      )
+      ) as tests_proc:
 
-      process_wait_start_time = current_datetime()
-
-      # Get the process id of the subprocess
-      test_run_pid = process.pid
-      log(f"""💡 ALKiln INFO: Running ALKiln tests with process ID { test_run_pid }. This process will run for a maximum of { max_run_time } seconds.""" )
-
-      # ====== Early process termination ====== #
-      # Try to store a process id to stop/terminate early if needed
-      save_kip_session_vars({ "test_pid": test_run_pid })
-
-      # ====== Process outcome and output ====== #
-      try:
-
-        # Get output tuple: `(stdout_data, stderr_data)`
-        # As a last resort, the processes will timeout
+        # Discuss: Create our own context manager with a timeout and
+        # useful error handling
+        # https://stackoverflow.com/questions/16740104/python-lock-with-statement-and-timeout
+        # https://stackoverflow.com/a/63546765/14144258
+        # https://book.pythontips.com/en/latest/context_managers.html
   
-        test_output = process.communicate( timeout=max_run_time )
-        returncode = process.returncode
+        log(f"""💡 ALKiln INFO: Running ALKiln tests with process ID { tests_proc.pid }. This process will run for a maximum of { max_seconds } seconds. To change the maximum time add the `{ timeout_env_var_name }` value to your config\'s `alkiln` section with a different value.""" )
   
-      except subprocess.TimeoutExpired:
-        # Example use of this exception:
-        # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/ef5dd232b0a3557fd4b8e9185883e0ecc6a161bb/docassemble/AssemblyLine/al_document.py#L2842-L2850
-        timeout_output = f'🤕 ALKiln ERROR ALKP0006: the tests run with the ID { test_run_pid } ran for over { date_difference( starting=process_wait_start_time, ending=current_datetime() ).seconds } seconds. The maximum time allowed is { max_run_time } seconds. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` section and giving it a different value.'
-        log(timeout_output)
-  
-      except Exception as error:
-        log('🤕 ALKiln ERROR ALKP0010: Error while running tests:')
-        log(error)
+        tests_process = tests_proc
+        result = run_with_cancel( tests_proc, "should_cancel_tests", max_seconds=max_seconds )
+        tests_std = result.get( "stds", False )
+        did_cancel = result.get( "did_cancel", False )
+        did_timeout = result.get( "did_timeout", False )
+        msgs = result.get( "msgs", None )
+        tests_outputs.append( *msgs )
 
-    # TODO: Remove since we removed the `timeout` command from the process?
     except subprocess.TimeoutExpired:
       # Example use of this exception:
       # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/ef5dd232b0a3557fd4b8e9185883e0ecc6a161bb/docassemble/AssemblyLine/al_document.py#L2842-L2850
-      timeout_output = f'🤕 ALKiln ERROR ALKP0012: the tests run with the ID { test_run_pid } ran for over { date_difference( starting=process_wait_start_time, ending=current_datetime() ).seconds } seconds. The maximum time allowed is { max_run_time } seconds. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` section and giving it a different value.'
-      log(timeout_output)
-  
-    except Exception as test_run_error:
-      import traceback
-  
-      # We get here even when the sub-processes fail
-      log(f"""💡 ALKiln INFO: The test subprocess completed with the returncode { returncode }:""" )
-      log("\n".join( traceback.format_exception( test_run_error ) ))
-
-      # Throw error if the process (not the tests) failed
-      # Discuss: Consolidate failure messages into 1 message
-      if returncode != None and returncode != 0:
-        # This will cause `.failed()` to return `True`
-        raise
-    
-    finally:
-      # Always make sure subprocess and its children are terminated
-      # Always create output of some kind
+      timeout_msg = f'🤕 ALKiln ERROR ALKP0006: The test run with the ID { test_run_pid } ran for over { max_seconds } seconds. To change the maximum time add the `{ timeout_env_var_name }` value to your config\'s `alkiln` section with a different value.'
+      log( timeout_msg )
+      tests_outputs.append( timeout_msg )
       
-      # Force process to terminate
-      # You can test this by not stringifying `alkiln` env vars and
-      # including a bool value in those env vars to cause an error
-      try:
-        if test_run_pid != None:
-          # SIGTERM is not enough
-          os.killpg(os.getpgid( test_run_pid ), signal.SIGKILL)
-          # We have to terminate this process ourselves because
-          # when `.communicate` runs out of time, the system doesn't
-          # complete the process itself. Low level interface.
-          process.wait()
-        else:
-          log(f"""🤕 ALKiln ERROR: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by a value in the server config under the `alkiln` key that has a non-string value. It often comes with a message similar to "expected str, bytes or os.PathLike object, not bool". To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository.""")
-      except ProcessLookupError as already_terminated_error:
-        # An already terminated process is a happy process
-        pass
-      except Exception as termination_error:
-        log('🤕 ALKiln ERROR ALKP0011: Error while stopping tests:')
-        log("\n".join( traceback.format_exception( termination_error ) ))
-        
-      # === Output ===
+    except Exception as test_run_error:
+      # I think we can test this by not stringifying `alkiln` env vars
+      # and including a bool value in those env vars to cause an error
+      tests_process_errored = True
+      msg = "🤕 ALKiln ERROR ALKP0010: Error while running ALKiln tests:"
+      log( msg )
+      err = "\n".join( traceback.format_exception( test_run_error ))
+      log( err )
+      tests_outputs.append( msg, err )
+
+    # Always kill just in case. It will catch process-already-dead errors.
+    if tests_process:
+      kill( tests_process )
+
+    if returncode == None:
+      returncode_msg = f"""🔎 ALKiln WARNING: The test subprocess had no return
+  code: { returncode }. Check your { worker_log_link } and feel free
+  to get in touch with us.
+  """
+    elif returncode != 0:
+      returncode_msg = f"""🔎 ALKiln WARNING: The test process stopped, but it ran into 
+  an error. We hope there is more information on this page or in your { worker_log_link }.
+  """
+    else:
+      returncode_msg = f"""💡 ALKiln INFO: The test subprocess completed with the
+  returncode { returncode }.
+  """
   
-      if test_output != None:
-        stdout = test_output[0].decode('utf-8')
-        stderr = test_output[1].decode('utf-8')
+    log( returncode_msg )
+    tests_outputs.append( returncode_msg )
 
-      return_code_msg = ''
-      if showifdef("returncode", "None") == None:
-        # Note: The new lines below are an attempt to control visual output
-        return_code_msg = f"""The test process stopped before it could finish properly
-  (technically, the returncode was `None`). Check your
-  { worker_log_link } and feel free to get in touch with us.\n"""
-      elif showifdef("returncode", "None") != 0:
-        return_code_msg = f"""The test process stopped, but it ran into 
-  an error. We hope there is more information on this
-  page or in your { worker_log_link }.\n"""
+    if tests_process != None:
+      returncode = tests_process.returncode
+      if tests_std != None:
+        stdout, stderr = [text.decode("utf-8") for text in tests_std]
+        log(f"""💡 ALKiln INFO: Tests stdout: { stdout }""")
+        log(f"""💡 ALKiln INFO: Tests stderr: { stderr }""")
+        tests_outputs.append( stdout, stderr )
 
-      # Discuss: If return code None, link to logs? Is that duplicate info?
-      output_main = '\n'.join( text for text in [ return_code_msg, showifdef('timeout_output', ''), showifdef('stdout', ''), showifdef('stderr', '') ] if text )
+    if tests_process_errored:
+      tests_outputs.append( "ALKilnInThePlayground ran into an error when it was trying to run ALKiln tests." )
+      background_response("\n".join( tests_outputs ))
+  
+  #     process = subprocess.Popen(
+  #       to_run,
+  #       start_new_session=True,
+  #       stdout=subprocess.PIPE,
+  #       stderr=subprocess.PIPE,
+  #       env=custom_env,
+  #       # Currently "/tmp" is the value da already gives for cwd (in background
+  #       # actions only as far as we can tell), but it may change ¯\_(ツ)_/¯
+  #       cwd=root_path
+  #     )
+
+  #     process_wait_start_time = current_datetime()
+
+  #     # Get the process id of the subprocess
+  #     test_run_pid = process.pid
+  #     log(f"""💡 ALKiln INFO: Running ALKiln tests with process ID { test_run_pid }. This process will run for a maximum of { max_seconds } seconds.""" )
+
+  #     # ====== Early process termination ====== #
+  #     # Try to store a process id to stop/terminate early if needed
+  #     save_kip_session_vars({ "test_pid": test_run_pid })
+
+  #     # ====== Process outcome and output ====== #
+  #     try:
+
+  #       # Get output tuple: `(stdout_data, stderr_data)`
+  #       # As a last resort, the processes will timeout
+  
+  #       tests_std = process.communicate( timeout=max_seconds )
+  #       returncode = process.returncode
+  
+  #     except subprocess.TimeoutExpired:
+  #       # Example use of this exception:
+  #       # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/ef5dd232b0a3557fd4b8e9185883e0ecc6a161bb/docassemble/AssemblyLine/al_document.py#L2842-L2850
+  #       timeout_msg = f'🤕 ALKiln ERROR ALKP0006: the tests run with the ID { test_run_pid } ran for over { date_difference( starting=process_wait_start_time, ending=current_datetime() ).seconds } seconds. The maximum time allowed is { max_seconds } seconds. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` section and giving it a different value.'
+  #       log(timeout_msg)
+  
+  #     except Exception as error:
+  #       log('🤕 ALKiln ERROR ALKP0010: Error while running tests:')
+  #       log(error)
+
+  #   # TODO: Remove since we removed the `timeout` command from the process?
+  #   except subprocess.TimeoutExpired:
+  #     # Example use of this exception:
+  #     # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/ef5dd232b0a3557fd4b8e9185883e0ecc6a161bb/docassemble/AssemblyLine/al_document.py#L2842-L2850
+  #     timeout_msg = f'🤕 ALKiln ERROR ALKP0012: the tests run with the ID { test_run_pid } ran for over { date_difference( starting=process_wait_start_time, ending=current_datetime() ).seconds } seconds. The maximum time allowed is { max_seconds } seconds. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` section and giving it a different value.'
+  #     log(timeout_msg)
+  
+  #   except Exception as test_run_error:
+  #     import traceback
+  
+  #     # We get here even when the sub-processes fail
+  #     log(f"""💡 ALKiln INFO: The test subprocess completed with the returncode { returncode }:""" )
+  #     log("\n".join( traceback.format_exception( test_run_error ) ))
+
+  #     # Throw error if the process (not the tests) failed
+  #     # Discuss: Consolidate failure messages into 1 message
+  #     if returncode != None and returncode != 0:
+  #       # This will cause `.failed()` to return `True`
+  #       raise
+    
+  #   finally:
+  #     # Always make sure subprocess and its children are terminated
+  #     # Always create output of some kind
+      
+  #     # Ensure process is fully terminated
+  #     # You can test this by not stringifying `alkiln` env vars and
+  #     # including a bool value in those env vars to cause an error
+  #     try:
+  #       if test_run_pid != None:
+  #         # SIGTERM is not enough
+  #         os.killpg(os.getpgid( test_run_pid ), signal.SIGKILL)
+  #         # We have to terminate this process ourselves because
+  #         # when `.communicate` runs out of time, the system doesn't
+  #         # complete the process itself. Low level interface.
+  #         process.wait()
+  #       else:
+  #         log(f"""🤕 ALKiln ERROR: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by a value in the server config under the `alkiln` key that has a non-string value. It often comes with a message similar to "expected str, bytes or os.PathLike object, not bool". To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository.""")
+  #     except ProcessLookupError as already_terminated_error:
+  #       # An already terminated process is a happy process
+  #       pass
+  #     except Exception as termination_error:
+  #       log('🤕 ALKiln ERROR ALKP0011: Error while stopping tests:')
+  #       log("\n".join( traceback.format_exception( termination_error ) ))
+        
+  #     # === Output ===
+  
+  #     if tests_std != None:
+  #       stdout = tests_std[0].decode('utf-8')
+  #       stderr = tests_std[1].decode('utf-8')
+
+  #     return_code_msg = ''
+  #     if showifdef("returncode", "None") == None:
+  #       # Note: The new lines below are an attempt to control visual output
+  #       return_code_msg = f"""The test process stopped before it could finish properly
+  # (technically, the returncode was `None`). Check your
+  # { worker_log_link } and feel free to get in touch with us.\n"""
+  #     elif showifdef("returncode", "None") != 0:
+  #       return_code_msg = f"""The test process stopped, but it ran into 
+  # an error. We hope there is more information on this
+  # page or in your { worker_log_link }.\n"""
+
+  #     # Discuss: If return code None, link to logs? Is that duplicate info?
+  #     output_main = '\n'.join( text for text in [ return_code_msg, timeout_msg, showifdef('stdout', ''), showifdef('stderr', '') ] if text )
+
+
+  
 
       ## Discuss: This seems like too much to put in the logs, but if things go
       ## too badly wrong, this might be the only available info from the tests.
       # log(f"""💡 ALKiln INFO: ALKiln test run output:\n{ output_main }""" )
 
-      background_response( f"ALKilnInThePlayground proccess id: { test_run_pid }\n\n{ output_main }" )
+      background_response( f"""ALKilnInThePlayground proccess id: { test_run_pid }\n\n{ "\n".join( tests_outputs ) }\n""" )
 ---
 code: |
   has_started_tests = False
@@ -2889,6 +3133,24 @@ code: |
     test_pid = get_one_json_file_var( kip_filepath, "test_pid" )["result"]
     _debug(f"""test_pid: { test_pid }""")
     return test_pid
+---
+need:
+  - root_path
+  - kip_session_filename
+  - alkiln_session_id
+  - get_one_json_file_var
+code: |
+  def get_kip_session_val( kip_config_key ):
+    """
+    Args:
+      (str): The name of the alkip config key
+    Returns:
+      (str|None): The value or None if value doesn't exist
+    """
+    kip_filepath = f"{ root_path }/{ alkiln_session_id }/{ kip_session_filename }"
+    kip_config_value = get_one_json_file_var( kip_filepath, kip_config_key )["result"]
+    _debug(f"""kip_config_value of { kip_config_key }: { kip_config_value }""")
+    return kip_config_value
 ---
 need:
   - root_path
