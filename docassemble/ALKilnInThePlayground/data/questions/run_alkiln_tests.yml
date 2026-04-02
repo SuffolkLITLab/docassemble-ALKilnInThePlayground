@@ -306,17 +306,20 @@ code: |
   # or commit as the source of truth for our version. This
   # unfortunately means there can't be just one source of truth
   # for which version of ALKiln is being used.
+
+  install_succeeded = False
   
   # if statement for idempotency? Run install only once. Needed here?
   if not did_install:
     to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
-    install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+    install_output = subprocess.run(['npm', 'install', '--ignore-scripts', '--min-release-age=7', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
     did_install = True
   
   if install_output.returncode != 0:
     result = install_output.stderr.decode('utf-8')
     log(f'■■■ ALKiln Error ALKP0004: installing ALKiln version {action_argument("version")} failed')
     log(result)
+  
     
     # Should this be a default behavior with any error?
     if 'ENOTEMPTY' in result:
@@ -328,13 +331,26 @@ code: |
       
       # Do we need an idempotency flag here?
       log(f'□□□ ALKiln: Trying to install version {action_argument("version")} again.')
-      install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+      install_output = subprocess.run(['npm', 'install', '--ignore-scripts', '--min-release-age=7', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
       
       # Not sure what more we can do at this point if it goes wrong
       if install_output.returncode != 0:
         log(f'■■■ ALKiln Error ALKP0005: 2nd time installing version {action_argument("version")} failed')
         log(install_output.stderr.decode('utf-8'))
-        
+      else:
+        install_succeeded = True
+
+  else:
+    install_succeeded = True
+
+  if install_succeeded:
+    puppeteer_output = subprocess.run(['npm', 'rebuild', '-g', 'puppeteer', '--update-binary'], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+  
+    if puppeteer_output.returncode != 0:
+      puppeteer_error = puppeteer_output.stderr.decode('utf-8')
+      log(f'■■■ ALKiln Error: rebuilding puppeteer failed')
+      log(puppeteer_error)
+  
   # Always except if is still an error. Will cause failure.
   install_output.check_returncode()
   
