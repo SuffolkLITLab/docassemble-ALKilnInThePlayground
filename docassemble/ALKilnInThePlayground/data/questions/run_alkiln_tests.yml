@@ -17,6 +17,7 @@
 # TODO (DONE): Put in background actions: ~npm connection check~, ~making final page html~, ~install~, ~generating random~,
 # TODO: Examine styles for `id="console"` elements
 # TODO: Ensure npm_connection_msg is only evaluated under some circumstances when showing the project choosing page
+# TODO: Add to final screen - time elapsed generating files
 # Discuss: Also put these in background actions: getting news, removing files.
 # Discuss: Show the user's username to them? Not great for recording anonymized runs through the interview, but it would put the information front and center. People have gotten confused before when exploring other user's sessions and, I believe, Projects.
 # Discuss: Allow authors to run tests in other people's Playgrounds when they have permissions to open sessions and Playgrounds of other users while they are exploring those Playgrounds.
