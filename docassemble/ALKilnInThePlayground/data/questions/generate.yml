@@ -1,0 +1,172 @@
+---
+id: generate randomized tests
+need:
+  - generate.action.phase
+code: |
+  if not generate.action.phase in ('failed', 'succeeded', 'cancelled'):
+    generate.action.run
+  generation_errored = not generate.ui.data.get('ok', False )
+  setup_outputs.extend( generate.ui.data.get('logs', []))
+  generate_constrained_random_tests_status = generate.ui.data.get('result', {}).get('status', 'missing_status_after_action' )
+---
+id: generate connection task
+code: |
+  generate.action.task = background_action('generate_randomized_tests')
+---
+id: generate randomized tests action
+event: generate_randomized_tests
+need:
+  - has_command
+  - _debug
+  - _add_and_log
+  - _add_and_debug
+  - format_error
+  - sources
+  - generation_errored
+  - worker_log_link
+  - generate.action.did_start
+  - generate.action.task_data
+  - generate.ui.description
+code: |
+  # ------------- Failure fallback -------------
+  background_error_action("fail_generation_action")
+
+  # ------------- Setup -------------
+  import subprocess
+
+  # Get these now to avoid idempotency problems
+  setup_outputs
+  custom_env
+
+  setup_stage = 'generate'
+  generation_error_msgs = []
+
+  # In case we need them later
+  generation_exception_message = f"""🤕 ALKiP ERROR: While generating randomized ".feature" files, ALKiln ran into an error we have not seen before."""
+  generation_stderr_message = f"""🤕 ALKiP ERROR: Errored while trying to generate randomized ".feature" files."""
+
+  # ------------- Guard the action -------------
+  if generate.action.did_start:
+  
+    _add_and_log( generate.action.task_data['logs'], [f"""🔎 ALKiP WARNING: Tried to re-run the { generate.ui.description } task. Docassemble was seeking `{ current_context().variable }`. Your { worker_log_link } may have more info."""])
+    generate.action.task_data['ok'] = False
+    generate.action.task_data['repeated'] = True
+    background_response( generate.action.task_data )
+
+  generate.action.did_start = True
+
+  # ------------- Run -------------
+
+  # Gatekeeper
+  bin_name = "alkiln-generate"
+  gen_cmd_exists = has_command( bin_name )
+  if not gen_cmd_exists:
+    generate.action.task_data['result']['ok'] = False
+    generate.action.task_data['result']['status'] = 'nonexistent'
+    _add_and_debug( generation_error_msgs, f'🖊️ ALKiln NOTE: The "{ bin_name }" command doesn\'t exist in this version of ALKiln')
+    background_response( generate.action.task_data )
+
+  _debug(f'💡 ALKiP INFO: The "{ bin_name }" command exists.')
+
+  generation_subprocess = None
+  try:
+    generation_subprocess = subprocess.run(
+      [
+        f'/var/www/.npm-global/bin/{ bin_name }'
+        , f'--sources={ sources }'
+      ],
+      check=False,
+      capture_output=True,
+      env=custom_env,
+      cwd='/tmp'
+    )
+    generate.action.task_data['ok'] = True
+  
+  except Exception as generation_error:
+    # Discuss: Should we `raise`? Should we stop? Keep going?
+    generate.action.task_data['ok'] = False
+    _add_and_log(
+      generation_error_msgs,
+      [ generation_exception_message, format_error( generation_error )]
+    )
+
+  if generation_subprocess and generation_subprocess.returncode != 0:
+    generate.action.task_data['ok'] = False
+    _add_and_log(
+      generation_error_msgs,
+      [ generation_stderr_message, generation_subprocess.stderr.decode('utf-8') ]
+    )
+
+  if generation_subprocess and generation_subprocess.stdout.decode('utf-8'):
+    # stdouts were actually created before the errors happened
+    generate.action.task_data['logs'].append( generation_subprocess.stdout.decode('utf-8') )
+
+  generate.action.task_data['logs'].extend( generation_error_msgs )
+  generate.action.task_data['result']['status'] = 'done'
+  background_response( generate.action.task_data )
+---
+event: fail_generation_action
+code: |
+  fail_npm_action_msg = f"""
+  { action_argument("error_type") } { action_argument("error_message") }: { action_argument("error_trace") }
+  Docassemble was looking for these variables:
+  { action_argument("variables") }
+  """
+  log( fail_npm_action_msg )
+  background_response({
+    'ok': False,
+    'repeated': False,
+    'interrupted': False,
+    'logs': [ fail_npm_action_msg ],
+    'result': {},
+  })
+---
+id: generation wait screen
+event: generate.action.wait
+prevent going back: True
+reload: 5
+question: |
+  :dice: Checking for randomized tests
+subquestion: |
+  <div class="spinner-container d-flex justify-content-center">
+  <div class="spinner-border" role="status">
+    <span class="visually-hidden">Generating...</span>
+  </div>
+  </div>
+  
+  This will take at least 5 seconds. If your package generates tests, the amount of time this takes will depend on how many tests you are generating.
+  
+  **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=generate.action.start_time ).delta) }**[BR]
+  (Updates about every 5 seconds depending on your server speed)
+---
+---
+id: generation task description
+code: |
+  generate.ui.description = 'randomized tests generation'
+---
+id: generation can continue on failure
+code: |
+  generate.action.continue_on_failure = True
+---
+id: unnecessary cancel key for generation task
+code: |
+  generate.action.cancel_key = 'cancel_generation_unnecessary'
+---
+objects:
+  generate: DAObject
+---
+---
+id: default generation errored value
+code: |
+  generation_errored = False
+---
+if: |
+  generate.action.did_start
+code: |
+  generate_constrained_random_tests_status = 'repeated'
+---
+if: |
+  artifacts_folder_and_runtime_config_final_status == 'nonexistent' or artifacts_errored or validation_errored
+code: |
+  generate_constrained_random_tests_status = 'skipped'
+---

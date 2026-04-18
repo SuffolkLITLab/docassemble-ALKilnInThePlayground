@@ -44,7 +44,7 @@ def find_package_data(where='.', package='', exclude=standard_exclude, exclude_d
     return out
 
 setup(name='docassemble.ALKilnInThePlayground',
-      version='1.3.1',
+      version='1.4.3',
       description=('Run ALKiln automated tests on your server, no GitHub account required. Made in collaboration with the SuffolkLITLab Document Assembly Line project.'),
       long_description='# docassemble.ALKilnInThePlayground\r\n\r\nRun ALKiln automated tests on your server, no GitHub account required. Works for any docassemble Project. Made in collaboration with the SuffolkLITLab Document Assembly Line project, but it is unnecessary to install Assembly Line.\r\n\r\nSee guides for writing tests and more about the project at the [ALKiln documentation](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/alkiln).\r\n\r\n## Authors\r\n\r\n- @plocket\r\n- Quinten Steenhuis @nonprofittechy\r\n- Bryce Willey @BryceStevenWilley\r\n',
       long_description_content_type='text/markdown',
@@ -53,7 +53,7 @@ setup(name='docassemble.ALKilnInThePlayground',
       license='MIT',
       url='https://docassemble.org',
       packages=find_namespace_packages(),
-      install_requires=[],
+      install_requires=['requests>=2.32.5'],
       zip_safe=False,
       package_data=find_package_data(where='docassemble/ALKilnInThePlayground/', package='docassemble.ALKilnInThePlayground'),
      )

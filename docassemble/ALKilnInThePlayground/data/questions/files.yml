@@ -1,0 +1,215 @@
+---
+id: save any alkip runtime var
+need:
+  - ensure_file_exists
+  - _debug
+code: |
+  from pathlib import Path
+  import json
+  import traceback
+  
+  def save_kip_runtime_vars( new_data, target_path ):
+    """
+    Set or overwrite values in the ALKiP runtime values as json. Return info
+      about what happened. Discuss: Return all config vars?
+  
+    Args:
+      new_data (dict(any)): Key/value pairs to add to or replace the runtime vars
+      target_path (str): Path to target file
+
+    Returns:
+      dict:
+        ok (bool): True if succeeded, False if failed.
+        message (str): Information. If failed, text of what went wrong.
+        result ({*} | None): The current runtime vars.
+    """
+    kip_runtime_json = None
+
+    log(f"setting vars at target_path: { target_path }")
+  
+    runtime_filepath = ensure_file_exists( target_path, default_value="{}" )["path"]
+    file_already_exists = True
+    runtime_vars_str = None
+
+    try:
+      with open( runtime_filepath, "r" ) as runtime_file:
+        runtime_file.seek(0)
+        runtime_vars_str = runtime_file.read()
+        _debug(f"ALKiP: prev runtime_vars_str: { runtime_vars_str }")
+        file_already_exists = True
+
+    except FileNotFoundError as kip_vars_notfound_error:
+      try:
+        kip_runtime_json = new_data
+        runtime_filepath.write_text(json.dumps( new_data ))
+
+      except Exception as write_new_kip_vars_error:
+        message = f"""Skipped writing new ALKiP vars json file: {"\n".join( traceback.format_exception( write_new_kip_vars_error ) )}"""
+        log(f"""🖊️ ALKiln NOTE: { message }""")
+        return { "ok": False, "message": message, "result": None }
+
+    except Exception as kip_vars_read_error:
+      message = f"""Skipped reading ALKiP vars json file: {"\n".join( traceback.format_exception( kip_vars_read_error ) )}"""
+      log(f"""🖊️ ALKiln NOTE: { message }""")
+      return { "ok": False, "message": message, "result": None }
+
+    if file_already_exists:
+      try:
+        kip_runtime_json = json.loads( runtime_vars_str )
+        kip_runtime_json.update( new_data )
+        runtime_filepath.write_text(json.dumps( kip_runtime_json ))
+
+      except Exception as kip_vars_edit_error:
+        message = f"""Skipped editing ALKiP vars json file: {"\n".join( traceback.format_exception( kip_vars_edit_error ) )}"""
+        log(f"""🖊️ ALKiln NOTE: { message }""")
+        return { "ok": False, "message": message, "result": None }
+
+    log(f"current kip_runtime_json: { kip_runtime_json }")
+    return { "ok": True, "message": "", "result": kip_runtime_json }
+---
+id: get_kip_session_val func
+# TODO: Change get/set names to match each other (session vs. runtime)
+need:
+  - _debug
+  - get_one_json_file_var
+code: |
+  def get_kip_session_val( kip_config_key, source_path ):
+    """
+    Args:
+      (str): The name of the alkip config key
+    Returns:
+      str|None: The value or None if value doesn't exist
+    """
+    log(f"getting vars at source_path: { source_path }")
+    kip_config_value = get_one_json_file_var( source_path, kip_config_key )["result"]
+    _debug(f"""kip_config_value of { kip_config_key }: { kip_config_value }""")
+    return kip_config_value
+---
+id: get one json var
+need:
+  - get_json_from_file
+code: |
+  import os
+  
+  def get_one_json_file_var( filepath, dict_key ):
+    """
+    Returns value of potential runtime config value named
+      `dict_key` along with information about what happened.
+
+    Args:
+      dict_key (str): Key of value to get from runtime config
+
+    Returns:
+      dict:
+        ok (bool): True if found the value, else false
+        message (str): Info about what happened (none yet)
+        result (any): Config value of the given key or None
+    """
+    json_data = get_json_from_file( filepath )
+    if not json_data["ok"]:
+      return {"ok": False, "message": "Unable to find find the json file", "result": None }
+
+    if not dict_key in json_data["result"]:
+      return {"ok": False, "message": f"""🖊️ ALKiln NOTE: Unable to find `{ dict_key }` in the json file""", "result": None }
+
+    return {
+      "ok": True, "message": f"""💡 ALKiP INFO: Found the value for { dict_key }""",
+      "result": json_data["result"][ dict_key ]
+    }
+---
+id: return json from file
+need:
+  - _debug
+  - _log
+  - ensure_file_exists
+code: |
+  def get_json_from_file( json_filepath ):
+    """
+    Get values from the alkiln runtime config as json or, if 
+        they don't yet exist, make that json. Return info about
+        what happened.
+
+    Returns:
+      (dict):
+        ok (bool): True if succeeded, False if failed
+        message (str): If failed, text of what went wrong
+        result (dict): The json
+    """
+    import os
+    import json
+    import traceback
+
+    message = ""
+    result = {}
+
+    ensure_file_exists( json_filepath, default_value='{}' )
+
+    try:
+      with open( json_filepath, 'r', encoding='utf-8') as json_file:
+        try:
+          result = json.load( json_file )
+      
+        except Exception as json_load_error:
+          message = f"""Problem loading json from file at "{ json_filepath }":\n{ "\n".join(traceback.format_exception( json_load_error )) }"""
+          _log(f"""🔎 ALKiP WARNING ALKP0013: { message }""")
+          return {
+            "ok": False, "message": message, "result": result
+          }
+    except Exception as json_open_error:
+      message = f"""Skipped opening json file at "{ json_filepath }":\n{ "\n".join(traceback.format_exception( json_open_error )) }"""
+      _debug(f"""🖊️ ALKiln NOTE: { message }""")
+      return {
+        "ok": False, "message": message, "result": result
+      }
+  
+    return { "ok": True, "message": message, "result": result }
+---
+id: ensure dirs and files exist at paths
+code: |
+  from pathlib import Path
+  import os
+
+  def ensure_dir_exists( dir_path ):
+    """
+    Creates directory if it doesn't exist. Otherwise leaves it alone. Returns the Path object of the dir path.
+    """
+    dir_Path = None
+    if dir_path:
+      dir_Path = Path( dir_path )
+      dir_Path.mkdir( parents=True, exist_ok=True )
+    return dir_Path
+  
+  def ensure_file_exists( filepath, default_value="" ):
+    """
+    Creates file if it doesn't exist. Otherwise leaves it alone. Returns the Path object of the filepath. If the file is empty, ensure the file contains default_value.
+
+    Args:
+      filepath (str): The whole path to the file
+      default_value (str): A value to give the file if the file is empty
+
+    Returns:
+      (obj):
+        path (str): The file path given to this function.
+        contents (str): The contents of the file by the end of the operation.
+        previous_contents (str): The contents of the file when this function first read the file.
+    """
+    ensure_dir_exists( os.path.dirname( filepath ) )
+  
+    file_Path = None
+    contents = None
+    previous_contents = None
+    if filepath:
+      file_Path = Path( filepath )
+      with open( file_Path, "a+") as file:
+        file.seek(0)
+        previous_contents = file.read()
+        contents = previous_contents
+        if default_value != "" and contents == "":
+          file_Path.write_text( str( default_value ))
+          contents = default_value
+    return {
+      "path": file_Path,
+      "contents": contents,
+      "previous_contents": previous_contents
+    }
+---

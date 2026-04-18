@@ -1,0 +1,258 @@
+---
+id: run process with canceler
+need:
+  - _add_and_log
+  - env_vars
+  - root_path
+  - format_error
+  - get_kip_session_val
+  - save_kip_runtime_vars
+  - terminate
+  - kill
+code: |
+  import os
+  import subprocess
+  import signal
+  import time
+
+  def run_process_with_canceler(
+    to_run,
+    cancel_key,
+    json_path="",
+    descriptor="unidentified",
+    custom_env_vars={},
+    max_seconds=None,
+    timeout_env_var_name=None
+  ):
+    """
+    Runs a list of commands as a process with subprocess.Popen. Terminates and kills
+      the `process` group if it detects a signal to cancel the process.
+
+    Args:
+      to_run ([str]): Commands to execute and their arguments (for subprocess.Popen)
+      cancel_key (str): Name of ALKiP session json key that would contain a cancelation flag
+      descriptor (str): Description of process for logging (optional, but strongly recommended)
+      json_path (str): Path to json file to watch for cancel signal
+      custom_env_vars (str, optional): Custom environment variables for subprocess.Popen
+      max_seconds (num, optional): Maximum number of seconds for the process to run
+      timeout_env_var_name (str, optional): Name of env var that sets a custom timeout for
+        this process. It gives good just-in-time information in logs.
+      
+    Returns
+      (dict):
+        ok (bool): True if the process succeeded or was terminated or killed. Discuss: Should
+          any ALKiln-related code errors be excluded from setting `ok` to False and be
+          reserved for only higher-level `subprocess` errors? In that case, how does the
+          information about the ALKiln-related error get out? And would we need to "catch"
+          other unusual circumstances (here or in ALKiln itself) such as "0 tests ran" in
+          order to match authors' expectations?
+        logs ([str]): Messages about what happened while the process ran. More complete than
+          server logs (includes stdout).
+        result (subprocess.Popen):
+        interrupted (bool): False if the process wasn't terminated or killed, else True
+    """
+
+    ok = True
+    logs = []
+
+    _add_and_log( logs, f"💡 ALKiP INFO: Starting { descriptor } process")
+  
+    process = None
+    returncode = None
+    stds = ["", """🔎 ALKiP WARNING: The { descriptor } process console outputs were not decodable. The logs above may have more information.""" ]
+
+    try:
+      custom_env = dict( os.environ, **custom_env_vars, **env_vars )
+      with subprocess.Popen(
+        to_run,
+        # start_new_session is new process group id in unix
+        start_new_session=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=custom_env,
+        # Currently "/tmp" is the value da already gives for cwd (in background
+        # actions only as far as we can tell), but it may change ¯\_(ツ)_/¯
+        cwd=root_path
+      ) as the_process:
+    
+        process = the_process
+        process_start_time = time.time()
+  
+        while the_process.poll() is None:
+          should_cancel = get_kip_session_val( cancel_key, json_path )
+          if should_cancel:
+            save_kip_runtime_vars({ cancel_key: False }, json_path )  # reset
+            _add_and_log( logs, [ f"💡 ALKiP INFO: Cancelling { descriptor } process with id { the_process.pid }" ])
+            break  # Will exit `while` to stop the process
+          try:
+            # Sleep for an interval
+            stds = the_process.communicate( timeout=1 )
+    
+          except subprocess.TimeoutExpired as one_loop_done:
+            # To test timeout errors, change this to `if True:`
+            if ( time.time() - process_start_time ) > max_seconds:
+              ok = False
+              max_msg = "" if max_seconds is None else f" (over { max_seconds } seconds)"
+              env_msg = "" if timeout_env_var_name is None else f" To change the maximum time add the `{ timeout_env_var_name }` value to your config's `alkiln` section with a different number of seconds."
+              timeout_msg = f"""🤕 ALKiP ERROR ALKP0006: The { descriptor } process with the ID { process.pid } took too long to run{ max_msg }.{ env_msg }"""
+              
+              _add_and_log( logs, [ timeout_msg ])
+              break  # Will exit `while` to stop the process
+              
+            continue # If not hit max time, loop again
+
+        # If the process completed these should do nothing
+        terminate( the_process )
+        kill( the_process, "finisher" )
+      
+        try:
+          # Give it last chance to try to finish if needed/possible, then get data
+          stds = the_process.communicate( timeout=0.5 )
+          returncode = the_process.returncode
+          _add_and_log( logs, [ f"💡 ALKiP INFO: Finished the { descriptor } process with id { the_process.pid }" ])
+      
+        except subprocess.TimeoutExpired as timeout_err:
+          pass  # Assume already logged above
+        except Exception as process_finish_err:
+          ok = False
+          _add_and_log( logs, [
+            f"🤕 ALKiP ERROR: The process with the id { the_process.pid } ran into an error with `.communicate()`:",
+            format_error( process_finish_err )
+          ])
+
+    # This might be a Popen error, but will also catch errors from the `with` block.
+    except Exception as process_err:
+      ok = False
+      _add_and_log( logs, [ f"🤕 ALKiP ERROR: The { descriptor } process ran into an error inside its `with` block:", format_error( process_err ) ])
+      stds = process.communicate( timeout=0.5 )
+      returncode = process.returncode
+
+    # @@@ TODO: Discuss: `ok` = False is an error with subprocess. Also, an error within a
+    # process, otherwise how do we let the caller know something went wrong?
+  
+    # `ok` of False is a non-killed/terminated/successful attempt at the process
+    if not returncode in [ -9, -15, 0 ]:
+      ok = False
+    interrupted = False
+    if returncode in [ -9, -15 ]:
+      interrupted = True
+
+    match returncode:
+      case None:
+        returncode_msg = f"""🔎 ALKiP WARNING: The { descriptor } process was incomplete"""
+      case -15:
+        returncode_msg = f"""💡 ALKiP INFO: ALKilnInThePlayground terminated the { descriptor } process"""
+      case -9:
+        returncode_msg = f"""💡 ALKiP INFO: ALKilnInThePlayground killed the { descriptor } process"""
+      case 0:
+        returncode_msg = f"""💡 ALKiP INFO: The { descriptor } process properly completed"""
+      case _:
+        returncode_msg = f"""🤕 ALKiP ERROR: The ALKilnInThePlayground { descriptor } process properly completed, but ALKiln ran into a problem"""
+  
+    returncode_msg += f""" (the returncode was { returncode })."""
+
+    try:
+      stdout, stderr = [ std.decode("utf-8") for std in stds ]
+    except Exception as std_err:
+      # Leave `ok` alone for now. We'll see if we need this to be an error
+      stdout, stderr = stds
+  
+    # Avoid using `_add_and_log()` to avoid logging stdout
+    log("\n".join([ text for text in [ returncode_msg, stderr ] if text ]))
+    logs.extend([ stdout, returncode_msg, stderr ])
+    
+    return {
+      "ok": ok,
+      "logs": [ text for text in logs if text ],
+      "interrupted": interrupted,
+      # "result": process,  # This can't be pickled
+    }
+---
+code: |
+  import os
+  import signal
+  
+  def terminate( process ):
+    """
+    Terminate a process group. Note: Avoiding process.terminate() because that
+      method only terminates the outermost process, not the process group.
+
+    Args:
+      process (subprocess.Popen)
+    """
+    try:
+      # returncode -15
+      os.killpg( os.getpgid( process.pid ), signal.SIGTERM )
+      process.wait( timeout=1 )  # Have to wait after stopping for some reason
+  
+    except OSError as already_terminated_error:
+      # An already terminated process is a happy process. Consider `ProcessLookupError` more specifically, though
+      pass
+    except Exception:
+      # Discuss: Add logs and `ok` flag? Why?
+      pass
+  
+    # Discuss: Add error indicators if `.poll()` is None? Why?
+---
+code: |
+  import traceback
+  import os
+  import signal
+  
+  def kill( process, caller ):
+    """
+    Make sure subprocess and its children are completely stopped. Use a
+    low-level interface. Why? One example: `.communicate` times out and
+    the system doesn't complete the process. Research: How would `with`
+    handle that situation?
+  
+    Research: Must the process always have been created with
+    `start_new_session` for `os.getpid()` to work?
+  
+    Args:
+      process (subprocess.Popen): Python subprocess, either open or closed
+      caller (str): Which part of the process lifecycle called this
+  
+    Returns:
+      dict:
+        ok (bool): True if ran into error-like behavior
+        logs ([ str ]): Messages about what happened
+    """
+    ok = True
+    logs = []
+  
+    try:
+      if process.poll() is not None:
+        return { "ok": True, "logs": [] }
+  
+      if process.pid != None:
+        # returncode -9
+        os.killpg( os.getpgid( process.pid ), signal.SIGKILL )
+        process.wait(timeout=0.5)  # Have to wait after stopping for some reason
+      else:
+        ok = False
+        no_pid = f"""🤕 ALKiP ERROR: The process ID is missing. Look above to identify the process and get in touch with us. If you want to experiment, in the past this problem has been caused by a value in the server config under the `alkiln` key that has a non-string value. It often comes with a message similar to "expected str, bytes or os.PathLike object, not bool"."""
+        log( no_pid )
+        logs.append( no_pid )
+  
+    except OSError as already_terminated_error:
+      # An already terminated process is a happy process. Consider `ProcessLookupError` tho
+      pass
+  
+    except subprocess.TimeoutExpired:
+      # We tried our best. Discuss: Do we need the log? Why?
+      timeout_msg = f"""🤕 ALKiP ERROR: The process with the ID { process.pid } timed out when we tried to kill it."""
+      log( timeout_msg )
+      logs.append( timeout_msg )
+  
+    except Exception as kill_process_error:
+      # Discuss: re-raise instead?
+      ok = False
+      msg1 = f"""🤕 ALKiP ERROR ALKP0011: Error while killing process:"""
+      log( msg1 )
+      msg2 = "\n".join( traceback.format_exception( kill_process_error ) )
+      log( msg2 )
+      logs.extend([ msg1, msg2 ])
+  
+    return { "ok": ok, "logs": logs }
+  

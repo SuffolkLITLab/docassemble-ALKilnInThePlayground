@@ -1,0 +1,292 @@
+---
+features:
+  css:
+    - alkiln_playground.css
+    - alkip_resets.css
+---
+id: path to danger
+event: potentially_dangerous_actions
+question: Do possibly risky things
+subquestion: |
+  This is a page for advanced actions. The actions you can take here have a small risk of causing problems. Some delete files and folders.
+  
+  The concepts here can be complex to understand and the interface is still primitive. We will continue to work on clarifying the interface, what these actions do, and how you can be most sure of success.
+  
+  ## Clean up an invalid ALKiln installation
+
+  Before you continue, make sure you have an internet connection and make sure no one else is running ALKiln tests.
+  
+  ${ action_button_html(url_action( "uninstall_alkiln" ), classname="alk_resets_button", label="Gently uninstall the ALKiln npm package", color="warning") }
+  
+  If that doesn't work, your last resort is to [prepare to delete the folder containing the ALKiln package, along with any other packages in that folder](${ url_action( "alkiln_installation_problems" ) }).
+
+  ## Other actions
+
+  Delete the `/tmp/runtime_config.json` file. It is a file ALKiln uses to keep track of its environment and it can become corrupted. Deleting it can affect currently running tests.
+  
+  ${ action_button_html( url_action("delete_config"), classname="alk_resets_button", label="Delete /tmp/runtime_config.json", color="warning") }
+---
+# ==================
+# Delete /tmp/runtime_config.json
+# ==================
+---
+id: remove runtime config
+event: delete_config
+code: |
+  import pathlib
+  try:
+    pathlib.Path.unlink("/tmp/runtime_config.json", missing_ok=True)
+    failed = False
+
+  except Exception as delete_runtime_config_err:
+    failed = True
+    log(f"""{"\n".join(([ "🤕 ALKiP ERROR: Failed to delete /tmp/runtime_config.json. Get in touch. More info (if available):" ] + traceback.format_exception( delete_runtime_config_err )) )}""", "danger")
+
+  if not failed:
+    log(f"""💡 ALKiP INFO: No errors when deleted /tmp/runtime_config.json""", "info")
+---
+# ==================
+# Uninstall global alkiln npm package
+# ==================
+---
+objects:
+  - uninstall_alkiln_bash: DAStaticFile.using(filename="data/sources/uninstall_global_npm_package.sh")
+---
+id: uninstall global alkiln npm package
+event: uninstall_alkiln
+need:
+  - uninstall_alkiln_bash
+code: |
+  import traceback
+  import subprocess
+  import os
+
+  try:
+    to_run = [
+      "bash", uninstall_alkiln_bash.path(),
+      "@suffolklitlab/alkiln"
+    ]
+    process = subprocess.run( to_run, env=dict( os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global" ), timeout=60, check=True)
+    failed = False
+
+  except Exception as uninstall_error:
+    failed = True
+    msg = f"""{"\n".join(([ "🤕 ALKiP ERROR: Failed to uninstall ALKiln. Try following the link to delete the folder containing ALKiln. More info (if available):" ] + traceback.format_exception( uninstall_error )) )}"""
+    log( msg )
+    log( msg, "danger" )
+
+  if not failed:
+    log(f"""💡 ALKiP INFO: No errors when ran uninstall""", "info")
+---
+# ==================
+# Delete node_modules
+# ==================
+---
+id: delete node_modules
+# TODO: Detect if there is a node_modules folder to begin with
+hide continue button: |
+  True
+question: Delete the `node_modules` folder
+subquestion: |
+  Pressing the button at the bottom of this page will delete the `/var/www/.npm-global/lib/node_modules` folder. It is your last resort for fixing problems you are having with an installation of ALKiln. It will probably be fine or, at worst, annoying. The questions below can help you make sure you are prepared.
+
+  If your interview ALKiln tests are failing and you think there might be other reasons, a better next step is to discuss your problems with [the docassemble community](https://docassemble.org/docs/support.html#slack) or [SuffolkLITLab's Document Assembly Line](https://assemblyline.suffolklitlab.org/) community before you continue.
+fields:
+  - Is ALKilnInThePlayground having problems with **internal** errors while installing or running ALKiln? Note that an interview with failing tests is a separate problem.: alkiln_installation_problems
+    datatype: yesnomaybe
+    label above field: True
+  - note: |
+      <div class="alert alert-danger" markdown=1>
+      It is best leave this button alone if your version of ALKiln has no internal errors.
+      </div>
+    show if: 
+      variable: alkiln_installation_problems
+      is: False
+  - note: |
+      <div class="alert alert-info" markdown=1>
+      If you are unsure we recommend you discuss your problems with [the docassemble community](https://docassemble.org/docs/support.html#slack) or [SuffolkLITLab's Document Assembly Line](https://assemblyline.suffolklitlab.org/) community before you continue. You can often find knowledgeable developers in those places.
+      </div>
+    show if: 
+      variable: alkiln_installation_problems
+      is: None
+
+  # # Discuss including the questions below
+  # - "Have you tried installing the most recent version of ALKiln (or at least the most recent patch version)? If you don't know what a patch version is pick \"I don't know\"": tried_patched_version
+  #   input type: radio
+  #   choices:
+  #     - Yes: True
+  #     - No: False
+  #     - I don't know: dunno
+  #   show if: alkiln_installation_problems
+  #   label above field: True
+  #   required: False
+  # - note: |
+  #     <div class="alert alert-info" markdown=1>
+  #     Installing the most recent version of ALKiln is most reliable. If you are unable to update to the most recent version of ALKiln, try updating to the most recent patch version of ALKiln before continuing.
+  #     </div>
+  #   show if: 
+  #     variable: tried_patched_version
+  #     is: False
+  # - note: |
+  #     <div class="alert alert-info" markdown=1>
+  #     Getting the absolute latest version of ALKiln is often the most reliable way to fix problems. If you need an older major or minor version of ALKiln, getting the most recent patch version might still help.
+      
+  #     ALKiln uses [a format called "semantic versioning"](https://semver.org/) in its version numbers. The version number is made of three numbers seperated by periods (`.`). The first number is the major version, the second number is the minor version, and the third number describes the patch version. For example, an example of a version number is `5.4.10`. The major version is `5`, the minor version is `4`, and the patch version is `10`:
+
+  #     <div class="blockquote">
+  #       <ol>
+  #         <li>MAJOR version [is for] incompatible API changes</li>
+  #         <li>MINOR version [is for new] functionality in a backward compatible manner</li>
+  #         <li>PATCH version [is for] backward compatible bug fixes</li>
+  #       </ol>
+  #       <div markdown=1>- https://semver.org</div>
+  #     </div>
+      
+  #     If you are unable to update your major or minor versions then updating your patch version to get all the bug fixes is better than nothing. Make sure you have the highest patch version possible.
+    
+  #     Many versions of ALKiln have no bug fixes and that can be fine. If you think your version might need bug fixes come talk to [the docassemble community](https://docassemble.org/docs/support.html) for support. You can also check our records of ALKiln's changes and updates, [our changelog](https://github.com/SuffolkLITLab/ALKiln/blob/HEAD/CHANGELOG.md), to see if that has helpful information.
+  #     </div>
+  #   show if:
+  #     variable: tried_patched_version
+  #     is: dunno
+
+  - Is anyone currently running ALKiln tests on the server?: running_tests_now
+    datatype: yesnomaybe
+    label above field: True
+    required: False
+  - note: |
+      <div class="alert alert-warning" markdown=1>
+      Pause here and make sure everyone finishes running their ALKiln tests.
+      </div>
+    show if:
+      variable: running_tests_now
+      is: True
+  - note: |
+      <div class="alert alert-warning" markdown=1>
+      Pause here and make sure everyone finishes running their ALKiln tests.
+      </div>
+    show if:
+      variable: running_tests_now
+      is: None
+    
+  - Have you tried to re-install ALKiln at least twice using the normal ALKilnInThePlayground interview?: tried_alkip
+    datatype: yesnoradio
+    label above field: True
+    show if: tried_patched_version
+    required: False
+  - note: |
+      <div class="alert alert-info" markdown=1>
+      Before continuing try re-installing ALKiln at least twice using the normal ALKilnInThePlayground interview.
+      </div>
+    show if: 
+      variable: tried_alkip
+      is: False
+      
+  # # Discuss including the questions below
+  # - "Have you tried talking to [the docassemble community](https://docassemble.org/docs/support.html) about the problem you are having?": tried_community
+  #   datatype: yesnoradio
+  #   label above field: True
+  #   required: False
+  # - note: |
+  #     <div class="alert alert-info" markdown=1>
+  #     We highly recommend you discuss your problem with the docassemble community or [SuffolkLITLab's Document Assembly Line](https://assemblyline.suffolklitlab.org/) community before you continue. You can often find our developers in those places.
+  #     </div>
+  #   show if: 
+  #     variable: tried_community
+  #     is: False
+  
+  # - Do you or your collegues have access to ssh into this docassemble server?: have_ssh_access
+  #   datatype: yesnoradio
+  #   show if: tried_alkip
+  #   label above field: True
+  # - note: |
+  #     This button might be your best option then. Go forth and press the button!
+  #   show if: 
+  #     variable: have_ssh_access
+  #     is: False
+  # - Are you or your collegues familiar with nodejs or npm packages?: know_npm
+  #   datatype: yesnoradio
+  #   show if: have_ssh_access
+  #   label above field: True
+  # - note: |
+  #     This button might be your best option then. Go forth and press the button!
+  #   show if: 
+  #     variable: know_npm
+  #     is: False
+  # - note: |
+  #     If you or a collegue has ssh access to your server and especially if either of you has experience with nodejs and npm, we recommend you use the ssh terminal to navigate to `/var/www/.npm-global/lib/node_modules` and try to repair the package other ways just in case ALKilnInThePlayground has a bug.
+  #   show if: 
+  #     variable: know_npm
+  #     is: True
+  
+  - Do you or your collegues use other packages that might be installed in the `/var/www/.npm-global/lib/node_modules` folder?: other_npm_packages
+    datatype: yesnomaybe
+    label above field: True
+    required: False
+    default: None
+  - note: |
+      <div class="alert alert-warning" markdown=1>
+      First, ${ prepare }
+      </div>
+    show if: other_npm_packages
+  - note: |
+      <div class="alert alert-warning" markdown=1>
+      Before pressing the button, find out if you, your colleagues, or your system is using other packages that might be installed in the `/var/www/.npm-global/lib/node_modules` folder. That can include packages you or they installed with `npm install -g the_package`. After that, ${ prepare }
+      </div>
+    show if: 
+      variable: other_npm_packages
+      is: None
+  
+  - Do you have an internet connection?: connected
+    datatype: yesnoradio
+    label above field: True
+    required: False
+  - note: |
+      <div class="alert alert-warning" markdown=1>
+      Once you have deleted this folder, you will only be able to reinstall ALKiln if you are connected to the internet.
+      </div>
+    show if:
+      variable: connected
+      is: False
+
+  - note: |
+      **This button will stay disabled until you confirm that you are having trouble with your ALKiln installation.**
+    
+      <button class="btn btn-danger btn-da daquestionactionbutton disabled text-light" disabled label="(Disabled) Dangerously delete the /var/www/.npm-global/lib/node_modules folder">
+        <i class="fa-solid fa-fire"></i><span>Dangerously delete the /var/www/.npm-global/lib/node_modules folder</span>
+      </button>
+    js show if: |
+      !val("alkiln_installation_problems")
+
+  - note: |
+      <button id="delete_node_modules" type="button" class="btn btn-danger btn-da daquestionactionbutton" label="Delete the existing /var/www/.npm-global/lib/node_modules folder" onclick="da_action_perform('dangerously_delete_node_modules')">
+      <i class="fa-solid fa-fire"></i> <span>Dangerously delete the /var/www/.npm-global/lib/node_modules folder</span>
+      </button>
+    js show if: |
+      val("alkiln_installation_problems")
+---
+id: prepare for pressing the button
+template: prepare
+content: |
+  make sure everyone stops using those packages before pressing the button. After you press the button everyone will have to re-install the packages that they need.
+---
+id: remove node_modules
+event: dangerously_delete_node_modules
+code: |
+  import shutil
+  import traceback
+
+  msg_before = "🔎 ALKiP WARNING: Now deleting /var/www/.npm-global/lib/node_modules. You will have to reinstall any packages you need."
+  log( msg_before )
+  log( msg_before, "console")
+  try:
+    shutil.rmtree("/var/www/.npm-global/lib/node_modules")
+
+    msg_success = "💡 ALKiP INFO: No errors when deleted /var/www/.npm-global/lib/node_modules. You will have to reinstall any packages you need."
+    log( msg_success )
+    log( msg_success, "info")
+  except Exception as error_deleting_node_modules:
+    err_msg = f"""{"\n".join(([ "🔎 ALKiP WARNING: ALKilnInThePlayground got an error when it tried to delete /var/www/.npm-global/lib/node_modules. More info (if available):" ] + traceback.format_exception( error_deleting_node_modules )) )}"""
+    log( err_msg )
+    log( err_msg, "warning" )
+---
