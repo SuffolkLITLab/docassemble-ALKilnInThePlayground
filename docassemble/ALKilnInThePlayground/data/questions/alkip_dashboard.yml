@@ -1,0 +1,35 @@
+---
+include:
+  - logs.yml
+  - alkip_dashboard_tools.yml
+---
+features:
+  css:
+    - alkiln_playground.css
+    - alkiln_copy.css
+    - alkip_dashboard.css
+  question back button: True
+---
+mandatory: True
+id: interview order
+need:
+  - debugging
+code: |
+  import random
+
+  rand_num = random.random()
+  if alk_dashboard_choice == 'processes':
+    # # For testing purposes. We will add our own alkiln config value later.
+    # if debugging and not sleeping:
+    #   import subprocess
+    #   subprocess.Popen(['sleep', '4m'])
+    #   sleeping = True
+    manage_alk_processes
+  elif alk_dashboard_choice == 'package':
+    manage_alk_package
+  elif alk_dashboard_choice == 'config':
+    manage_alk_config
+---
+code: |
+  sleeping = False
+---

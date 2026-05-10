@@ -1,0 +1,992 @@
+# TODO: co-author W.
+---
+include:
+  - logs.yml
+---
+features:
+  css:
+    - alkiln_playground.css
+    # Optimisticly included for future changes already implemented elsewhere
+    - alkiln_copy.css
+    - alkip_dashboard.css
+---
+metadata:
+  title: ALKilnInThePlayground Doctor
+  short title: ALKiP Doctor
+  description: Manage your server's ALKiln processes and more
+---
+id: alk_dashboard_choice
+buttons:
+  - "Running processes": processes
+    image: magnifying-glass-chart
+  - "ALKiln package": package
+    image: heart-circle-exclamation
+  - "Clean ALKiln config": config
+    image: file-circle-exclamation
+question: |
+  :house-chimney-medical: ALKilnInThePlayground doctor
+subquestion: |
+  What do you want to manage?
+field: alk_dashboard_choice
+---
+# ==================
+# Stop processes
+# ==================
+# TODO: Change the example command to an alkiln-run command once we know what that looks like
+---
+id: manage alk processes
+code: |
+  alk_processes_to_kill
+  kill_alk_processes
+  show_alk_processes
+  manage_alk_processes = True
+---
+id: processes to terminate
+reconsider:
+  - alk_procs_field_data
+action buttons:
+  - label: Refresh
+    action: javascript:daRefreshSubmit()
+    icon: refresh
+    color: primary
+continue button label: ":xmark: Stop processes"
+continue button color: danger
+question: |
+  :magnifying-glass-chart: ALKiln-related processes on your server
+subquestion: |
+  _:dragon: On this page you can stop (terminate) ALKiln-related processes. This is an advanced topic._
+  
+  ${ num_processes_description }
+
+  ${ about_processes }
+
+  ${ identifying_processes }
+  
+  ${ refresh_button }
+fields:
+  - Which do you want to terminate?: alk_processes_to_kill
+    datatype: checkboxes
+    choices:
+      code: |
+        [{ 'value': proc['value'], 'label': proc['label'] } for proc in alk_procs_field_data if proc['verdict'] == 'contender' ]
+    none of the above: False
+    all of the above: True
+    minlength: 1
+    label above field: True
+---
+event: show_alk_processes
+id: show alk processes
+reconsider:
+  - alk_procs_field_data
+action buttons:
+  - label: Refresh
+    action: javascript:daRefreshSubmit()
+    icon: refresh
+    color: primary
+buttons:
+  - Restart: restart
+question: |
+  :magnifying-glass-chart: Remaining processes
+subquestion: |
+
+  ${ about_processes }
+
+  % if any( alk_proc['verdict'] != 'immune' for alk_proc in alk_procs_field_data ):
+  ${ num_processes_description }
+  % endif
+  % if any( alk_proc['verdict'] == 'doomed' for alk_proc in alk_procs_field_data ):
+  Of those, you chose to stop **${ len([ alk_proc for alk_proc in alk_procs_field_data if alk_proc['verdict'] == 'doomed' ]) }** of them.
+  % if len([ alk_proc for alk_proc in alk_procs_field_data if alk_proc['verdict'] == 'doomed' ]) > 1:
+  They are
+  % else:
+  It is
+  % endif
+  doomed and should soon stop. It should take less than 10 seconds to start seeing processes disappear. Refresh to see updates to the list.
+  % endif
+
+  ${ refresh_button }
+
+  % if any( alk_proc['verdict'] == 'doomed' for alk_proc in alk_procs_field_data ):
+  ## Doomed processes that will soon stop
+
+  <hr/>
+  % for alk_process in [ alk_proc for alk_proc in alk_procs_field_data if alk_proc['verdict'] == 'doomed' ]:
+  ${ alk_process['label'] }
+  <hr/>
+  % endfor
+  % endif
+
+
+
+  % if any( alk_proc['verdict'] == 'contender' for alk_proc in alk_procs_field_data ):
+  ## Processes you chose to keep
+
+  <hr/>
+  % for alk_process in [ alk_proc for alk_proc in alk_procs_field_data if alk_proc['verdict'] == 'contender' ]:
+  ${ alk_process['label'] }
+  <hr/>
+  % endfor
+  % endif
+
+
+
+  % if all( alk_proc['verdict'] == 'immune' for alk_proc in alk_procs_field_data ):
+  <div class='alk_no_processes'>
+  <div class='d-flex align-items-center'>
+  <div class=' fs-1 position-relative' style='margin-right: 20px;'>
+  <div markdown=1 class='d-flex'>:magnifying-glass:</div>
+  </div>
+  <div markdown=1>
+  ${ num_processes_description }
+  </div>
+  </div>
+  </div>
+  % endif
+---
+id: get alk processes
+need:
+  - _add_and_log
+  - _add_and_debug
+  - nice_time
+  - format_error
+  - alk_process_finders
+code: |
+  import psutil
+
+  alk_procs_logs = []
+  _add_and_debug( alk_procs_logs, [
+    f'🐛 ALKP0013 INFO: Looking for alkiln processes',
+  ])
+
+  alk_processes_tmp = []
+  alk_proc = None
+  alk_procs_err = None
+  # ⚠️ For some reason, process_iter has been able to get processes for which this code lacks permission to kill, which is counter to the docs: https://psutil.readthedocs.io/latest/faq.html#why-do-i-get-accessdenied. This post has the same problem and responders are unsurprised: https://stackoverflow.com/questions/12051485/killing-processes-with-psutil. We check permissions later after getting some data.
+  psutil_procs = psutil.process_iter(attrs=['pid', 'cmdline'])
+  psutil_procs = psutil_procs or []
+  psutil_alk_procs = []
+  proc_safe_description_lines = []
+
+  for proc_finder in alk_process_finders:
+    proc_cmd = None
+    psutil_alk_procs += [ alk_proc for alk_proc in psutil_procs
+      if alk_proc.info['cmdline'] and any(
+        proc_finder in proc_cmd.lower()
+        for proc_cmd in alk_proc.info['cmdline']
+    )]
+
+  for alk_proc in psutil_alk_procs:
+    proc_field_data = {}
+    try:
+      proc_safe_description_lines = [
+        # ⚠️ Avoid triggering error before getting the main data
+        f'''**Start:** { nice_time( alk_proc.create_time()) }''',
+        f'''**ID:** { alk_proc.info['pid'] }''',
+        f'''**Commands:** { alk_proc.info['cmdline'] }''',
+      ]
+
+      verdict = 'immune'
+      if defined('alk_processes_to_kill'):
+        alk_to_kill_vals = ''.join( alk_processes_to_kill.true_values() )
+        if f'{alk_proc.info['pid']}' in alk_to_kill_vals \
+          and f'{alk_proc.create_time()}' in alk_to_kill_vals:
+            verdict = 'doomed'
+
+      _add_and_debug( alk_procs_logs, f'''🐛 ALKP0026 INFO: Initial verdict of { alk_proc.info['pid'] } is { verdict }''')
+
+      # Collect as much data as possible before possible permissions error
+      # ⚠️ Adding extraneous keys to a dict for a field seems to
+      # insert a duplicate field. Must simiplify the object when
+      # turning it into field options
+      proc_field_data =  {
+        'verdict': verdict,
+        'start': alk_proc.create_time(),
+        'pid': alk_proc.info['pid'],
+        'commands': alk_proc.info['cmdline'],
+        'label': '[BR]\n'.join( proc_safe_description_lines ),
+        # Unique data. Time included in case pid gets recycled.
+        'value': {
+          'pid': alk_proc.info['pid'],
+          'start': alk_proc.create_time(),
+        },  # value from DOM is always str with single quotes
+      }
+      alk_processes_tmp.append( proc_field_data )
+
+      # Check permissions as well as add data (alk_proc.environ() will
+      # cause error if no permission)
+      proc_project_name = alk_proc.environ().get('_ALKILN_PROJECT_NAME', 'Unknown')
+      proc_field_data['label'] = '[BR]\n'.join([ \
+          f'''**Project:** { proc_project_name }''' 
+        ] \
+        + proc_safe_description_lines \
+      )
+      proc_field_data['project'] = proc_project_name
+      proc_field_data['verdict'] = 'contender' \
+        if proc_field_data['verdict'] != 'doomed' \
+        else verdict
+  
+      _add_and_debug( alk_procs_logs, [ f'''🐛 ALKP0014 INFO: Adding process { alk_proc.info['pid'] } to the list of ALKiln processes to kill with the final verdict of { proc_field_data['verdict'] }'''])
+
+    except psutil.AccessDenied as proc_access_err:
+      # Add info here where we have access to the proc info
+      if proc_safe_description_lines:
+        alk_err_msgs = [
+          f'''🤕 ALKP0021 ERROR: { "\n".join([ \
+            "No permission to access processes:", \
+            "\n".join( proc_safe_description_lines ) \
+          ]) }''',
+        ]
+        _add_and_log( alk_procs_logs, alk_err_msgs )
+      else:
+        alk_err_msgs = [ f'''🤕 ALKP0022 ERROR: Access denied to process that doesn't have a description:''', ]
+        _add_and_log( alk_procs_logs, alk_err_msgs )
+        _add_and_log( alk_procs_logs, [ format_error( proc_access_err ), ])
+  
+    except psutil.NoSuchProcess:
+      _add_and_debug( alk_procs_logs, [ f'🖊️ ALKP0024 NOTE: No process with the ID { alk_proc.info.get('pid', None ) }.'])
+      pass
+    except Exception as alk_procs_err:
+      _add_and_log( alk_procs_logs, [ f'🖊️ ALKP0015 NOTE: Skipping an "alkiln" process item because of an error:', ])
+      _add_and_log( alk_procs_logs, [ format_error( alk_procs_err ) ])
+
+  # ⚠️ Prevent processes causing errors when pickled
+  psutil_procs = None
+  psutil_alk_procs = None
+  alk_proc = None
+
+  alk_procs_field_data = alk_processes_tmp
+---
+event: kill_alk_processes
+id: kill alk processes
+need:
+  - _add_and_log
+  - _add_and_debug
+  - debugging
+  - format_error
+  - alk_procs_field_data
+  - alk_processes_to_kill
+code: |
+  import os
+  import json
+  import psutil
+  
+  alk_procs_kill_log = []
+  _add_and_log( alk_procs_kill_log, [
+    f'''💡 ALKP0016 INFO: Trying to kill these processes:''',
+    alk_processes_to_kill.true_values(),
+  ])
+
+  count = 0
+  for alk_proc_data_str in alk_processes_to_kill.true_values():
+    try:
+      alk_proc_data_str = alk_proc_data_str.replace("'", '"')
+      alk_proc_data = json.loads( alk_proc_data_str )
+      to_term_id_str = alk_proc_data['pid']
+      to_term_id = int( to_term_id_str )
+      alk_proc_start_time = alk_proc_data['start']
+  
+      # https://psutil.readthedocs.io/latest/recipes.html#controlling-processes
+      if to_term_id != os.getpid():
+  
+        matching_field_data = [ field_datum \
+          for field_datum in alk_procs_field_data \
+          if field_datum.get('pid') == to_term_id \
+          and field_datum.get('start') == alk_proc_start_time \
+        ]
+        if len( matching_field_data ) > 0:
+          matching_field_data[0]['verdict'] = 'doomed'
+
+        # # For testing purposes. We will add our own alkiln config value later.
+        # if debugging and count > 0:
+        #   # Only kill one process at a time to see all results pages types
+        #   break
+        # count += 1
+  
+        _add_and_debug( alk_procs_kill_log, [ f'🐛 ALKP0025 INFO: Trying to kill { to_term_id }:', ])
+        alk_proc_parent = psutil.Process( to_term_id )
+        alk_proc_group = alk_proc_parent.children(recursive=True)
+        alk_proc_group.append( alk_proc_parent )
+        # Discuss: 1. Use this methodology in future terminate/kill (combined into 1 function). 2. Use the process helper functions here when we add them.
+        for alk_proc_to_kill in alk_proc_group:
+          alk_proc_to_kill.terminate()
+        _, alive = psutil.wait_procs( alk_proc_group, timeout=.3 )
+        # Ensure death
+        # https://psutil.readthedocs.io/latest/api.html#psutil.wait_procs
+        for alk_proc_to_kill in alive:
+          _add_and_debug( alk_procs_kill_log, [
+            f'''🖊️ ALKP0017 NOTE: { alk_proc_to_kill } is still alive, ensuring death''',
+          ])
+          alk_proc_to_kill.kill()
+        psutil.wait_procs( alk_proc_group, timeout=.3 )
+        _add_and_debug( alk_procs_kill_log, [ f'''🐛 ALKP0018 INFO: Killed { to_term_id_str }''', ])
+  
+    except psutil.NoSuchProcess:
+      pass
+    except Exception as alk_pro_kill_err:
+      _add_and_log( alk_procs_kill_log, [
+        f'''🤕 ALKP0020 ERROR: Error when killing processes:''',
+        format_error( alk_pro_kill_err ),
+      ])
+
+  # ⚠️ Prevent processes causing errors when pickled
+  alk_proc_parent = None
+  alk_proc_group = None
+  alk_proc_to_kill = None
+  alive = None
+  _ = None
+
+  kill_alk_processes = True
+---
+---
+# Hard-coded processes vals
+---
+id: processes to find
+need:
+  - debugging
+code: |
+  debugging
+  # Alternative name: alk_processes_keywords
+  alk_process_finders = [ 'alkiln', 'chrome' ]  # Default
+  if debugging:
+    alk_process_finders = [ 'sleep', 'alkiln', 'chrome' ]  # Dev
+---
+# ALKiln processes shared terms
+---
+terms:
+  test run: A test run includes all the tests that you ran.
+  headless Chrome browser: An invisible browser, just like Chrome on your computer. The ALKiln robot goes to this invisible browser to interact with the interview it is testing.
+  processes that the doctor is unable to stop: For example, this tool cannot stop processes that were created by the docassemble server or that advanced developers may have started in their terminal manually (for example, using ssh).
+  stoppable ALKiln processes: The doctor doesn't have access to stop just any process. For example, this tool cannot stop processes that were created by the docassemble server or that advanced developers may have started in their terminal manually (for example, using ssh).
+---
+# ALKiln processes shared templates
+---
+id: refresh
+template: refresh_button
+content: |
+  ${ action_button_html('javascript:daRefreshSubmit()', label='Refresh list of processes', icon='refresh', color='primary') }
+---
+id: num ALKiln processes description
+template: num_processes_description
+content: |
+  The doctor found <strong>${ len([ alk_proc for alk_proc in alk_procs_field_data if alk_proc['verdict'] != 'immune' ]) } {stoppable ALKiln processes}</strong> currently running.
+---
+id: info about processes
+template: about_processes
+need:
+  - alk_procs_field_data
+content: |
+  % if any( alk_proc for alk_proc in alk_procs_field_data if alk_proc['verdict'] == 'immune' ) > 0:
+  <details class='alert alert-warning' markdown=1>
+  <summary markdown=1>
+  :triangle-exclamation: Processes the doctor is unable to stop
+  </summary>
+  <hr>
+  
+  These are processes the doctor thinks are related to ALKiln, but are also {processes that the doctor is unable to stop}. If you are unsure of what to do here, come talk to one of the DAL or ALKiln team members.
+  
+  % for proc_no_perms in [ alk_proc['label'] for alk_proc in alk_procs_field_data if alk_proc['verdict'] == 'immune']:
+  <hr>
+  ${ proc_no_perms }
+  
+  % endfor
+  </details>
+  % endif
+
+  
+  <details class='alert alert-info' markdown=1>
+  <summary markdown=1>
+  :book: Basics about the processes listed on this page
+  </summary>
+  <hr>
+  Your server is always running a bunch of processes unrelated to ALKiln, like celery processes. This doctor tries to list only processes it thinks have to do with ALKiln.
+  
+  Each ALKiln {test run} sets off a process on your server containing the word "alkiln". That process sometimes sets off other processes. One possible example is {headless Chrome browser} processes that have the word "chrome" in them.
+
+  The processes you can choose below show these attributes:
+  
+  <dl>
+  
+  <div class='row g-2'>
+  <dt class='col-3'>Project</dt>
+  <dd class='col-9' markdown=1>The Project you were testing.</dd>
+  </div>
+
+  <div class='row g-2'>
+  <dt class='col-3'>Start</dt>
+  <dd class='col-9' markdown=1>The time the test started.</dd>
+  </div>
+
+  <div class='row g-2'>
+  <dt class='col-3'>ID</dt>
+  <dd class='col-9' markdown=1>The process ID, or "PID". Some more advanced developers can use this ID to find the process using the command line or logs.</dd>
+  </div>
+
+  <div class='row g-2'>
+  <dt class='col-3'>Commands</dt>
+  <dd class='col-9' markdown=1>Each process has a list of one or more commands that started the process. ALKiln {test run} commands will include the word 'alkiln' in them. A list of {headless Chrome browser} commands will have the word 'chrome'. For example, using `subprocess.Popen(['sleep', '4m'])` in your interview will set off a process with one command on the commands list: `['sleep', '4m']`.</dd>
+  </div>
+  
+  </dl>
+  </details>
+---
+need:
+  - worker_log_link
+template: identifying_processes
+content: |
+  <details class='alert alert-success' markdown=1>
+  <summary markdown=1>
+  :circle-question: How do I know which process to stop?
+  </summary>
+  <hr>
+  
+  If you are trying to stop a {test run} process, use the test run start time and project name to identify it in the list below. You can find logs related to that test run's process by searching your ${ worker_log_link } for logs with the text "ALKP0023" at the time your test started. That should show the correct process ID number too.
+
+  A {headless Chrome browser} process will have the word "chrome" in its list of commands. We are sorry to say that there are very few ways to tell those processes apart from each other. Look for a start time that was during the test run. ALKiln is probably the package that started a chrome process, but we can't be sure. <!-- TODO: Confirm this: Docassemble itself does not trigger processes that use “chrome” as of 04/22/2026. -->
+  
+  </details>
+---
+# ==================
+# Global ALKiln npm package
+# ==================
+---
+id: manage npm things
+code: |
+  # # TODO: Indicate when something doesn't exist.
+  # # Temp
+  # node_modules_folder_exists = True
+  # alkiln_package_exists = True
+  
+  # # In case the author previously deleted these, we want to make sure they
+  # # get an indication that these are gone.
+  # if !node_modules_folder_exists:
+  #   no_node_modules_kickout = True
+
+  # # Shows not about alkiln_package if it's gone instead of that question
+  # no_one_running_tests
+
+  if package_actions_info_choice == 'uninstall' \
+    and not wants_to_delete_node_modules_instead:  
+      uninstall_alkiln_results
+      show_alkiln_uninstall_results
+  if package_actions_info_choice == 'delete_node_modules_folder' \
+    or wants_to_delete_node_modules_instead:
+      do_delete_node_modules
+      delete_node_modules_results
+      show_deletion_results
+  manage_alk_package = True
+---
+id: which package action
+question: |
+  :heart-circle-exclamation: ALKiln package
+subquestion: |
+  _:dragon: On this page you can manage issues with the installed ALKiln package. This is an advanced topic._
+  
+  These features are still experimental.
+fields:
+  - Have you made sure that no one on the server is currently running ALKiln tests?: no_one_running_tests
+    datatype: yesnoradio
+    label above field: True
+  - note: |
+      <div markdown=1 class='alert alert-warning'>
+      :person-falling-burst: If you take one of these actions
+      while ALKiln tests are running, those tests will fail or error and ALKiln processes and runtime files might get out of sync. You should be able to fix those by using <a target='_blank' href='${ interview_url(i='alkip_dashboard.yml', new_session='1') }'>the ALKilnInThePlayground doctor</a> to manage ALKiln processes and clean the ALKiln config.
+
+      Pause here and make sure everyone finishes running their ALKiln tests.
+      </div>
+    show if:
+      variable: no_one_running_tests
+      is: False
+  
+  - Are you connected to the internet?: connected
+    datatype: yesnoradio
+    label above field: True
+    required: False
+  - note: |
+      <div markdown=1 class='alert alert-warning'>
+      :wifi: If you take one of these actions, you will only be able to reinstall ALKiln if you are connected to the internet.
+      </div>
+    show if:
+      variable: connected
+      is: False
+
+  - What do you want to find out more about?: package_actions_info_choice
+    datatype: radio
+    choices:
+      - Gently uninstalling just the ALKiln package: uninstall
+      - Deleting the `node_modules` folder: delete_node_modules_folder
+      
+validation code: |
+  if not no_one_running_tests:
+    validation_error('Make sure no one is running tests. Or you can lie about it.', 'no_one_running_tests')
+---
+# Uninstalling ALKiln
+---
+id: decide to uninstall alkiln
+question: |
+  :heart-circle-exclamation: Uninstall ALKiln
+continue button label: |
+  :trash: Uninstall just ALKiln
+subquestion: |
+  You might uninstall the ALKiln package if your version of ALKiln is misbehaving. For example:
+
+  - You are running into errors when you try to install a new version of ALKiln.
+  - Your test failure messages seem unrelated to your actual tests.
+
+  This often happens if an author starts to install a new versionf of ALKiln and cancels in the middle.
+
+  Uninstalling ALKiln is a pretty gentle way to try to resolve these types of problems. If you are unsure, feel free to come talk to ALKiln's developers in the `alkiln_automated_testing` channel in [the docassemble Slack](https://docassemble.org/docs/support.html#slack).
+  
+  ALKilnInThePlayground will stay installed when you uninstall ALKiln.
+fields:
+  - "I already tried this and need to find out about deleting the `node_modules` folder instead": wants_to_delete_node_modules_instead
+    datatype: yesnowide
+    default: False
+  - note: |
+      <div markdown=1 class='alert alert-info'>
+      Go back to the previous page and choose the `node_modules` option instead.
+      </div>
+    show if: wants_to_delete_node_modules_instead
+validation code: |
+  if wants_to_delete_node_modules_instead:
+    validation_error('Go back to the previous page and choose the `node_modules` option.', 'wants_to_delete_node_modules_instead')
+---
+event: show_alkiln_uninstall_results
+id: show alkiln uninstall results
+# TODO: Once ALKiln installation is a separate interview, add a link here
+buttons:
+  - Restart: restart
+question: |
+  % if uninstall_alkiln_results.get('ok', False):
+  <div markdown=1 class='alert alert-success'>
+  :heart-circle-check: Success! You uninstalled ALKiln.
+  </div>
+  % else:
+  :heart-circle-exclamation: Hmm, something unexpected happened.
+  % endif
+subquestion: |
+  % if uninstall_alkiln_results.get('ok', False):
+  <div markdown=1 class='alk_all_clean alk_uninstalled'>
+  <div markdown=1 class='d-flex align-items-center'>
+  ${ op_complete_icons_div }
+  <div markdown=1>
+  You uninstalled ALKiln! If you want to run more ALKiln tests you must install ALKiln again.
+  </div>
+  </div>
+  </div>
+  
+  % else:
+  <div markdown=1 class='alert alert-danger'>
+  :triangle-exclamation: ALKilnInThePlayground ran into a problem when it tried to uninstall ALKiln.
+  </div>
+  % endif
+
+  The output of trying to uninstall ALKiln:
+
+  <pre>${ '\n'.join( uninstall_alkiln_results.get('logs', []) ).replace('<', '&lt;').replace('>', '&gt;') }</pre>
+  
+  </br>
+---
+id: uninstall global alkiln npm package
+# TODO: Make this a background action once we abstract those
+# Note: Works fine when node_modules folder is missing.
+need:
+  - uninstall_alkiln_bash
+  - _add_and_log
+  - _add_and_debug
+  - format_error
+code: |
+  import subprocess
+  import os
+
+  uninstall_alkiln_logs = []
+  ok = False
+
+  _add_and_log( uninstall_alkiln_logs, f'''💡 ALKP0027 INFO: Trying to uninstall ALKiln.''')
+  
+  try:
+    to_run = [
+      "bash", uninstall_alkiln_bash.path(),
+      "@suffolklitlab/alkiln"
+    ]
+    alk_uninstall_process = subprocess.run( to_run, env=dict( os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global" ), timeout=60, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+    if alk_uninstall_process.returncode == 0:
+      ok = True
+      _add_and_debug( uninstall_alkiln_logs, [ alk_uninstall_process.stdout, f'''💡 ALKP0028 INFO: No errors when uninstalled ALKiln.''', ])
+    else:
+      ok = False
+      _add_and_log( uninstall_alkiln_logs, [f'''🤕 ALKP0029 ERROR: Error from the process with returncode { alk_uninstall_process.returncode } when deleting the node_modules folder:''', alk_uninstall_process.stdout ])
+  
+    alk_uninstall_process = None
+
+  except Exception as uninstall_error:
+    ok = False
+    more_info = '\n'.join([ 'More info (if available):', format_error( uninstall_error ) ])
+    _add_and_log( uninstall_alkiln_logs, [f'''🤕 ALKP0030 ERROR: Error while deleting the node_modules folder, either before, during, or after. { more_info }''', ])
+
+  if not ok:
+    _add_and_log( uninstall_alkiln_logs, ['💡 ALKP0031 INFO: Start over and try deleting the node_modules folder instead.'])
+
+  uninstall_alkiln_results = {
+    'ok': ok,
+    'logs': uninstall_alkiln_logs or []
+  }
+---
+objects:
+  - uninstall_alkiln_bash: DAStaticFile.using(filename="data/sources/uninstall_global_npm_package.sh")
+---
+# Delete the ALKiln node_modules folder
+---
+comment: |
+  # Discuss including the questions below
+  # Discuss: include the questions below?
+  - "Have you tried installing the most recent version of ALKiln (or at least the most recent patch version)? If you don't know what a patch version is pick \"I don't know\"": tried_patched_version
+    input type: radio
+    choices:
+      - Yes: True
+      - No: False
+      - I don't know: dunno
+    show if: alkiln_installation_problems
+    label above field: True
+    required: False
+  - note: |
+      <div class='alert alert-info' markdown=1>
+      Installing the most recent version of ALKiln is most reliable. If you are unable to update to the most recent version of ALKiln, try updating to the most recent patch version of ALKiln before continuing.
+      </div>
+    show if: 
+      variable: tried_patched_version
+      is: False
+  - note: |
+      <div class='alert alert-info' markdown=1>
+      Getting the absolute latest version of ALKiln is often the most reliable way to fix problems. If you need an older major or minor version of ALKiln, getting the most recent patch version might still help.
+      
+      ALKiln uses [a format called "semantic versioning"](https://semver.org/) in its version numbers. The version number is made of three numbers seperated by periods (`.`). The first number is the major version, the second number is the minor version, and the third number describes the patch version. For example, an example of a version number is `5.4.10`. The major version is `5`, the minor version is `4`, and the patch version is `10`:
+
+      <div class='blockquote'>
+        <ol>
+          <li>MAJOR version [is for] incompatible API changes</li>
+          <li>MINOR version [is for new] functionality in a backward compatible manner</li>
+          <li>PATCH version [is for] backward compatible bug fixes</li>
+        </ol>
+        <div markdown=1>- https://semver.org</div>
+      </div>
+      
+      If you are unable to update your major or minor versions then updating your patch version to get all the bug fixes is better than nothing. Make sure you have the highest patch version possible.
+    
+      Many versions of ALKiln have no bug fixes and that can be fine. If you think your version might need bug fixes come talk to [the docassemble community](https://docassemble.org/docs/support.html) for support. You can also check our records of ALKiln's changes and updates, [our changelog](https://github.com/SuffolkLITLab/ALKiln/blob/HEAD/CHANGELOG.md), to see if that has helpful information.
+      </div>
+    show if:
+      variable: tried_patched_version
+      is: dunno
+  ####
+  - "Have you tried talking to [the docassemble community](https://docassemble.org/docs/support.html) about the problem you are having?": tried_community
+    datatype: yesnoradio
+    label above field: True
+    required: False
+  - note: |
+      <div class='alert alert-info' markdown=1>
+      We highly recommend you discuss your problem with [the docassemble community](https://docassemble.org/docs/support.html#slack) or [SuffolkLITLab's Document Assembly Line](https://assemblyline.suffolklitlab.org/docs/get_started#join-the-community) community before you continue. You can often find our developers in those places.
+      </div>
+    show if: 
+      variable: tried_community
+      is: False
+  ####
+  - Do you or your collegues have access to ssh into this docassemble server?: have_ssh_access
+    datatype: yesnoradio
+    show if: tried_alkip
+    label above field: True
+  - note: |
+      This button might be your best option then. Go forth and press the button!
+    show if: 
+      variable: have_ssh_access
+      is: False
+  - Are you or your collegues familiar with nodejs or npm packages?: know_npm
+    datatype: yesnoradio
+    show if: have_ssh_access
+    label above field: True
+  - note: |
+      This button might be your best option then. Go forth and press the button!
+    show if: 
+      variable: know_npm
+      is: False
+  - note: |
+      If you or a collegue has ssh access to your server and especially if either of you has experience with nodejs and npm, we recommend you use the ssh terminal to navigate to `/var/www/.npm-global/lib/node_modules` and try to repair the package other ways just in case ALKilnInThePlayground has a bug.
+    show if: 
+      variable: know_npm
+      is: True
+  ####
+  - Have you tried to re-install ALKiln at least twice using the normal ALKilnInThePlayground interview?: tried_alkip
+    datatype: yesnoradio
+    label above field: True
+    show if: tried_patched_version
+    required: False
+  - note: |
+      <div class='alert alert-info' markdown=1>
+      Before continuing try re-installing ALKiln at least twice using the normal ALKilnInThePlayground interview.
+      </div>
+    show if: 
+      variable: tried_alkip
+      is: False
+---
+id: delete node_modules
+# Discuss: Encourage people to install the latest patch version? How to explain the concept succinctly and clearly?
+continue button field: do_delete_node_modules
+continue button label: |
+  :trash: Delete the folder
+continue button color: danger
+back button label: |
+  I changed my mind
+terms:
+  - "the /var/www/.npm-global/lib/node_modules folder": |
+      A `node_modules` folder is a typical folder to have when you install a javascript node package like ALKiln. Ours is located in the directory at `/var/www/.npm-global/lib`.
+question: |
+  :heart-circle-exclamation: Delete ALKiln's `node_modules` folder
+subquestion: |
+  :dragon: This is an advanced topic.
+
+  You might delete {the /var/www/.npm-global/lib/node_modules folder} if your version of ALKiln is misbehaving, especially if you already tried to uninstal and reinstal ALKiln with no improvement. Behavior to look for:
+
+  - You are running into errors when you try to install a new version of ALKiln.
+  - Your test failure messages are strange and seem unrelated to your actual tests.
+
+  This often happens if an author starts to install a new versionf of ALKiln and cancels in the middle. Deleting the `/var/www/.npm-global/lib/node_modules` folder is a bigger step than uninstalling. The questions below can help you make sure you are prepared.
+
+  ALKilnInThePlayground will stay installed when you delete the `node_modules` folder.
+
+  If you think there might be another reason your interview ALKiln tests are failing, a better next step is to discuss your problems with [the docassemble community](https://docassemble.org/docs/support.html#slack) or [SuffolkLITLab's Document Assembly Line](https://assemblyline.suffolklitlab.org/docs/get_started#join-the-community) community before you continue.
+fields:
+  - Are your ALKilnInThePlayground tests getting errors that are unrelated to your tests?: alkiln_installation_problems
+    datatype: yesnomaybe
+    label above field: True
+  - note: |
+      <div markdown=1 class='alert alert-danger'>
+      It is best leave this button alone if your interview is causing the test failures.
+      </div>
+    show if: 
+      variable: alkiln_installation_problems
+      is: False
+  - note: |
+      <div markdown=1 class='alert alert-info'>
+      If you are unsure, we recommend you discuss these problems with [the docassemble community](https://docassemble.org/docs/support.html#slack) or [SuffolkLITLab's Document Assembly Line](https://assemblyline.suffolklitlab.org/docs/get_started#join-the-community) community before you continue. You can often find knowledgeable developers in those places.
+      </div>
+    show if:
+      variable: alkiln_installation_problems
+      is: None
+  
+  - Do you or your collegues use other packages that might be installed in the `/var/www/.npm-global/lib/node_modules` folder?: other_npm_packages
+    datatype: yesnomaybe
+    label above field: True
+    required: False
+  - note: |
+      <div markdown=1 class='alert alert-warning'>
+      First, make sure everyone stops using those packages before pressing the button. After you delete the folder, everyone will have to re-install the packages that they need.
+      </div>
+    show if: other_npm_packages
+  - note: |
+      <div markdown=1 class='alert alert-warning'>
+      As of 2026, it is very unlikely that you would have a package in this folder that is unrelated to ALKiln, but still possible, especially if you have someone on your team who likes experimenting. Before pressing the button, find out from a developer familiar with those details about your server. Note that after you delete the folder, people will have to re-install whatever other packages they need. If you are unsure, we recommend you discuss your problems with [the docassemble community](https://docassemble.org/docs/support.html#slack) or [SuffolkLITLab's Document Assembly Line](https://assemblyline.suffolklitlab.org/docs/get_started#join-the-community) community before you continue.
+      </div>
+    show if: 
+      variable: other_npm_packages
+      is: None
+  - "I want to try just uninstalling ALKiln": wants_to_try_uninstalling_instead
+    datatype: yesnowide
+    default: False
+  - note: |
+      <div markdown=1 class='alert alert-info'>
+      Go back to the previous page and choose the option to uninstall instead.
+      </div>
+    show if: wants_to_try_uninstalling_instead
+validation code: |
+  if wants_to_try_uninstalling_instead:
+    validation_error('Go back to the previous page and choose the option to uninstall ALKiln.', 'wants_to_try_uninstalling_instead')
+---
+event: show_deletion_results
+id: show node_modules deleted results
+buttons:
+  - Restart: restart
+question: |
+  % if delete_node_modules_results.get('ok', False):
+  <div markdown=1 class='alert alert-success'>
+  :heart-circle-check: No errors when deleting the node_modules folder!
+  </div>
+  % else:
+  :heart-circle-exclamation: Hmm, something unexpected happened.
+  % endif
+subquestion: |
+  
+  % if delete_node_modules_results.get('ok', False):
+  <div markdown=1 class='alk_all_clean alk_deleted_node_modules'>
+  <div markdown=1 class='d-flex align-items-center'>
+  ${ op_complete_icons_div }
+  <div markdown=1>
+  The `/var/www/.npm-global/lib/node_modules` folder is gone! If you want to run more ALKiln tests you must install ALKiln again.
+  % if other_npm_packages:
+  <strong>Also remember to install the other packages your server needs.</strong>
+  % endif
+  </div>
+  </div>
+  </div>
+  
+  % else:
+  <div markdown=1 class='alert alert-danger'>
+  :triangle-exclamation: ALKilnInThePlayground ran into a problem when it tried to delete the `/var/www/.npm-global/lib/node_modules` folder.
+  </div>
+  % endif
+
+  The output of trying to delete the folder:
+
+  <pre>${ '\n'.join( delete_node_modules_results.get('logs', []) ).replace('<', '&lt;').replace('>', '&gt;') }</pre>
+  
+  </br>
+---
+id: remove node_modules
+need:
+  - _add_and_log
+  - _add_and_debug
+  - format_error
+code: |
+  import shutil
+
+  ok = False
+  modules_deletion_logs = []
+  _add_and_log( modules_deletion_logs, ['💡 ALKP0032 INFO: Now deleting /var/www/.npm-global/lib/node_modules. You will have to reinstall any packages you need.'])
+  
+  try:
+    shutil.rmtree("/var/www/.npm-global/lib/node_modules")
+    ok = True
+    _add_and_debug( modules_deletion_logs, ['🐛 ALKP0033 INFO: No errors when deleting /var/www/.npm-global/lib/node_modules. You will have to reinstall any packages you need.'])
+
+  # Also the error for an unfound dir
+  except FileNotFoundError as error_node_modules_not_found:
+    ok = True
+    _add_and_debug( modules_deletion_logs, [f'''🐛 ALKP0034 INFO: Already gone: The node_modules folder was already gone when we tried to delete it. The error was FileNotFoundError.''', ])
+  
+  except Exception as error_deleting_node_modules:
+    ok = False
+    more_info = '\n'.join([ 'More info (if available):', format_error( error_deleting_node_modules ) ])
+    _add_and_log( modules_deletion_logs, [ f'''🔎 ALKP0035 WARNING: ALKilnInThePlayground got an error when it tried to delete /var/www/.npm-global/lib/node_modules. { more_info }''', ])
+
+  delete_node_modules_results = {
+    'ok': ok,
+    'logs': modules_deletion_logs,
+  }
+---
+# ==================
+# Delete /tmp/runtime_config.json
+# ==================
+---
+id: manage runtime config
+code: |
+  # # TODO: indicate when there's no config to delete
+  # if config_missing:
+  #   config_missing_kickout  # Already deleted
+  # # Do the same for other tasks
+  
+  if wants_to_delete_runtime_config:
+    delete_runtime_config
+  runtime_config_end
+  manage_alk_config = True
+---
+id: runtime config choices
+continue button field: wants_to_delete_runtime_config
+continue button color: warning
+continue button label: ":trash: Delete file"
+question: |
+  :file-circle-exclamation: Runtime config
+subquestion: |
+  _:dragon: On this page you can delete the ALKiln `/tmp/runtime_config.json` file. This is an advanced topic._
+
+  `/tmp/runtime_config.json` is an ALKiln file that helps a test keep track of internal information during a test run. For example, the start time of the test. This file can get out of sync with the tests, causing ALKiln to get confused. For example, the artifacts folder may stop updating the start time of the most recent tests. Deleting this file is a reasonable way to solve those problems. The next time someone runs tests, ALKiln will make a new file.
+  
+  :triangle-exclamation: Deleting this file can affect currently running tests.
+fields:
+  - Have you made sure that no one on the server is currently running ALKiln tests?: no_one_running_tests
+    datatype: yesnoradio
+    label above field: True
+  - note: |
+      <div markdown=1 class='alert alert-warning'>
+      :person-falling-burst: If you delete the `runtime_config.json` while ALKiln tests are running, those tests may not be able to find their artifacts information and the test run may error.
+
+      Pause here and make sure everyone finishes running their ALKiln tests.
+      </div>
+    show if:
+      variable: no_one_running_tests
+      is: False
+      
+validation code: |
+  if not no_one_running_tests:
+    validation_error('Make sure no one is running tests. Or you can lie about it.', 'no_one_running_tests')
+---
+event: runtime_config_end
+id: finished deleting runtime config
+buttons:
+  - Restart: restart
+question: |
+  % if delete_runtime_ok:
+  <div markdown=1 class='alert alert-success'>
+  :file-circle-check: No errors when deleting the file!
+  </div>
+  % else:
+  :file-circle-exclamation: Hmm, problem deleting the file
+  % endif
+subquestion: |
+  % if delete_runtime_ok:
+  <div markdown=1 class='alk_all_clean alk_no_runtime_config'>
+  <div markdown=1 class='d-flex align-items-center'>
+  ${ op_complete_icons_div }
+  <div markdown=1>
+  You deleted ALKiln's `runtime_config.json`. ALKiln will make a new one the next time it runs a test.
+  </div>
+  </div>
+  </div>
+  % else:
+  <div markdown=1 class='alert alert-danger'>
+  :triangle-exclamation: ALKilnInThePlayground ran into a problem when it tried to delete `runtime_config.json`.
+  </div>
+
+  <pre>${ '\n'.join( delete_runtime_logs ).replace('<', '&lt;').replace('>', '&gt;') }</pre>
+  
+  </br>
+  % endif
+---
+id: remove runtime config
+need:
+  - _add_and_log
+  - _add_and_debug
+  - format_error
+code: |
+  import pathlib
+
+  delete_runtime_logs = []
+  delete_runtime_ok = False
+  _add_and_debug( delete_runtime_logs, '🐛 ALKP0036 INFO: Deleting runtime config file.')
+  
+  try:
+    # Discuss: Should we inform about a missing file?
+    pathlib.Path.unlink("/tmp/runtime_config.json", missing_ok=True)
+    delete_runtime_ok = True
+
+  except Exception as delete_runtime_config_err:
+    delete_runtime_ok = False
+    error_msg = ''
+    if format_error( delete_runtime_config_err ):
+      error_msg = '\n'.join(['More info:', format_error( delete_runtime_config_err ) ])
+    _add_and_log( delete_runtime_logs, f'''🤕 ALKP0037 ERROR: Failed to delete /tmp/runtime_config.json. Get in touch. { error_msg }''')
+
+  if delete_runtime_ok:
+    _add_and_debug( delete_runtime_logs, f'''🐛 ALKP0038 INFO: No errors when ALKilnInTehPlayground deleted /tmp/runtime_config.json''')
+
+  delete_runtime_config = True
+---
+---
+# Doctor/dashboard shared templates
+---
+id: completed operation icons
+template: op_complete_icons_div
+content: |
+  <div class='ops_complete_icons fs-1 position-relative' style='margin-right: 20px;'>
+  <div markdown=1 class='d-flex'>:broom:</div>
+  <div markdown=1 class='d-flex fs-6 position-absolute bottom-0 end-0' style='translate: 10px 0;'>:wind:</div>
+  </div>
+---

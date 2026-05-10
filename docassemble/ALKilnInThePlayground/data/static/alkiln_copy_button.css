@@ -22,7 +22,7 @@
 }
 
 note {
-  note: "Copy button and other relevant elements container. Discuss: Other sections having sticky headings.";
+  note: "Copy button and other relevant elements container. Discuss: 1. Other sections having sticky headings. 2. Make `console` a class instead of an id.";
 }
 #console .alkiln_copy .sticky_scroll {
   note: "Puts this element below the nav bar to keep it visible (it's got a transform pushing it up next to the heading, so it needs extra. I'm not sure where that navbar padding is set. I haven't found it on GitHub. Element .da-pad-for-navbar";

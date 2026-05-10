@@ -1,0 +1,163 @@
+# Discuss: log behaviors:
+# _log: log in log. log repr in console if debugging?
+# _debug: if debugging, log repr in log, log repr in console
+---
+need:
+  - _log
+code: |
+  def _add_and_log( old_messages, new_messages, where="log" ):
+    """
+    1. Mutates `old_messages` list by adding truthy `new_messages`
+    2. Logs the truthy messages
+  
+    Args:
+      old_messages ([]): List to mutate
+      new_messages ([ str ]): List of new messages
+      where ([str], optional): Where to log (e.g. "console", "success", etc.)
+  
+    Returns:
+      []: list containing truthy items in `new_messages`
+    """
+    where = where or "log"
+    if not isinstance( new_messages, list ):
+      new_messages  = [ new_messages ]
+    truthy_messages = [ text for text in new_messages if text ]
+    old_messages.extend( truthy_messages )
+    for message in truthy_messages:
+      _log( message, where )
+    return old_messages
+---
+need:
+  - _debug
+code: |
+  def _add_and_debug( old_messages, new_messages, where="console" ):
+    """
+    1. Mutates `old_messages` list by adding truthy `new_messages`
+    2. Logs the truthy messages if debugging is turned on
+  
+    Args:
+      old_messages ([]): List to mutate
+      new_messages ([ str ]): List of new messages
+      where ([str], optional): Where to log (e.g. "console", "success", etc.)
+  
+    Returns:
+      []: list containing truthy items in `new_messages`
+    """
+    where = where or "log"
+    if not isinstance( new_messages, list ):
+      new_messages  = [ new_messages ]
+    truthy_messages = [ text for text in new_messages if text ]
+    old_messages.extend( truthy_messages )
+    for message in truthy_messages:
+      _debug( message, where )
+    return old_messages
+---
+code: |
+  def _log( to_log, where='log' ):
+    """
+    Logs `to_log` to the desired location and the console. Silences exceptions.
+
+    Args:
+        to_log (str): Message to log.
+        where (str): A valid 2nd argument to docassemble `log()`. Ex: 'console'
+    """
+    try:
+      log( to_log, where )
+      if where != 'console':
+        if debugging == True or debugging.lower() == "true" or int( debugging ) == 1:
+          log( to_log, 'console' )
+    except Exception:
+      _debug('Why?')
+      pass
+    return to_log
+---
+need:
+  - debugging
+code: |
+  def _debug( to_log, where='log' ):
+    """
+    Logs the object representation or the string of `to_log` to the desired
+        location and the console if the debug flag is on.
+
+    Args:
+        to_log (str): Value to log.
+        where (str): A valid 2nd argument to docassemble `log()`. Ex: 'console'
+    """
+    if debugging == True or debugging.lower() == "true" or int( debugging ) == 1:
+      try:
+        log( repr( to_log ), where )
+        if where != "console":
+          log( repr( to_log ), "console" )
+      except:
+        try:
+          log( to_log, where )
+          if where != "console":
+            log( to_log, "console" )
+        except:
+          pass
+    return to_log
+---
+# TODO: Replace use of `traceback` with this func
+code: |
+  import traceback
+  def format_error( error ):
+    """
+    Return a formatted string of the error's traceback
+
+    Args:
+      error (Exception): An error
+
+    Returns:
+      (str): The formatted string
+    """
+    return "\n".join(traceback.format_exception( error ))
+---
+code: |
+  from datetime import datetime
+  def nice_time( timestamp='now' ):
+    """
+    Args:
+      timestamp (num|str): A UNIX timestamp
+    
+    Returns
+      (str): Date and time as a human-readable string
+    """
+    if timestamp == 'now':
+      desired_time = datetime.now()  # type is datetime.datetime
+    else:
+      timestamp = float( timestamp )
+      desired_time = datetime.fromtimestamp( timestamp )
+    return  desired_time.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+---
+reconsider: True
+code: |
+  debugging = alkiln_config_vars.get('alkip_debug', False) or alkiln_config_vars.get("alkiln_debug", False)
+---
+# Discuss: Move this value to a shared vars yml.
+reconsider: True
+id: alkiln-related config vars
+code: |
+  alkiln_config_vars = get_config('alkiln') or {}
+---
+---
+code: |
+  docassemble_log_link = f"""<a target="_blank" href="{ url_of('root', _external=True) }/logs?file=docassemble.log">docassemble.log</a>"""
+  
+  worker_log_link = f"""<a target="_blank" href="{ url_of('root', _external=True) }/logs?file=worker.log">worker.log</a>"""
+---
+need:
+  - docassemble_log_link
+code: |
+  da_log_more_info = f"Your { docassemble_log_link } might have more information."
+---
+need:
+  - worker_log_link
+code: |
+  worker_log_more_info = f"Your { worker_log_link } might have more information."
+---
+need:
+  - docassemble_log_link
+  - worker_log_link
+code: |
+  logs_more_info = f"Your { docassemble_log_link } or { worker_log_link } might have more information."
+---
