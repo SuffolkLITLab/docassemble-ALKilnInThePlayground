@@ -693,7 +693,7 @@ fields:
     label above field: True
     required: False
   - note: |
-      <div markdown=1 class='alert alert-warning'>
+      <div markdown=1 class='alert alert-danger'>
       First, make sure everyone stops using those packages before pressing the button. After you delete the folder, everyone will have to re-install the packages that they need.
       </div>
     show if: other_npm_packages
@@ -775,7 +775,7 @@ code: |
   # Also the error for an unfound dir
   except FileNotFoundError as error_node_modules_not_found:
     ok = True
-    _add_and_debug( modules_deletion_logs, [f'''🐛 ALKP0034 INFO: Already gone: The node_modules folder was already gone when we tried to delete it. The error was FileNotFoundError.''', ])
+    _add_and_debug( modules_deletion_logs, [f'''🐛 ALKP0034 INFO: Already gone: The node_modules folder was already gone when we tried to delete it. The result was a FileNotFoundError and that is fine.''', ])
   
   except Exception as error_deleting_node_modules:
     ok = False
