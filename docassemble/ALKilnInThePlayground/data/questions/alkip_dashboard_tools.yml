@@ -1,4 +1,3 @@
-# TODO: co-author W.
 ---
 include:
   - logs.yml
@@ -32,7 +31,6 @@ field: alk_dashboard_choice
 # ==================
 # Stop processes
 # ==================
-# TODO: Change the example command to an alkiln-run command once we know what that looks like
 ---
 id: manage alk processes
 code: |
@@ -162,11 +160,13 @@ code: |
   alk_proc = None
   alk_procs_err = None
   # ⚠️ For some reason, process_iter has been able to get processes for which this code lacks permission to kill, which is counter to the docs: https://psutil.readthedocs.io/latest/faq.html#why-do-i-get-accessdenied. This post has the same problem and responders are unsurprised: https://stackoverflow.com/questions/12051485/killing-processes-with-psutil. We check permissions later after getting some data.
-  psutil_procs = psutil.process_iter(attrs=['pid', 'cmdline'])
+  # ⚠️ Avoid using a python iterator so we can re-use the list
+  psutil_procs = list( psutil.process_iter(attrs=['pid', 'cmdline']) )
   psutil_procs = psutil_procs or []
   psutil_alk_procs = []
   proc_safe_description_lines = []
 
+  # Note: So far, no duplicate processes get added. Will handle if needed.
   for proc_finder in alk_process_finders:
     proc_cmd = None
     psutil_alk_procs += [ alk_proc for alk_proc in psutil_procs
@@ -197,7 +197,7 @@ code: |
       # Collect as much data as possible before possible permissions error
       # ⚠️ Adding extraneous keys to a dict for a field seems to
       # insert a duplicate field. Must simiplify the object when
-      # turning it into field options
+      # turning it into field options.
       proc_field_data =  {
         'verdict': verdict,
         'start': alk_proc.create_time(),
@@ -273,7 +273,7 @@ code: |
   alk_procs_kill_log = []
   _add_and_log( alk_procs_kill_log, [
     f'''💡 ALKP0016 INFO: Trying to kill these processes:''',
-    alk_processes_to_kill.true_values(),
+    alk_processes_to_kill.true_values() or 'None',
   ])
 
   count = 0
@@ -296,7 +296,7 @@ code: |
         if len( matching_field_data ) > 0:
           matching_field_data[0]['verdict'] = 'doomed'
 
-        # # For testing purposes. We will add our own alkiln config value later.
+        # # For testing. TODO: Add more fine-grained config debug options.
         # if debugging and count > 0:
         #   # Only kill one process at a time to see all results pages types
         #   break
@@ -346,14 +346,14 @@ need:
 code: |
   debugging
   # Alternative name: alk_processes_keywords
-  alk_process_finders = [ 'alkiln', 'chrome' ]  # Default
+  alk_process_finders = [ 'alkiln', 'chrome', ]  # Default
   if debugging:
-    alk_process_finders = [ 'sleep', 'alkiln', 'chrome' ]  # Dev
+    alk_process_finders = [ 'sleep', 'alkiln', 'chrome', ]  # Dev
 ---
 # ALKiln processes shared terms
 ---
 terms:
-  test run: A test run includes all the tests that you ran.
+  test run: A test run here is all the tests, or Scenarios, that you ran with one push of the button. Technically speaking, it is one run of the `alkiln-run` command.
   headless Chrome browser: An invisible browser, just like Chrome on your computer. The ALKiln robot goes to this invisible browser to interact with the interview it is testing.
   processes that the doctor is unable to stop: For example, this tool cannot stop processes that were created by the docassemble server or that advanced developers may have started in their terminal manually (for example, using ssh).
   stoppable ALKiln processes: The doctor doesn't have access to stop just any process. For example, this tool cannot stop processes that were created by the docassemble server or that advanced developers may have started in their terminal manually (for example, using ssh).
@@ -378,7 +378,7 @@ content: |
   % if any( alk_proc for alk_proc in alk_procs_field_data if alk_proc['verdict'] == 'immune' ) > 0:
   <details class='alert alert-warning' markdown=1>
   <summary markdown=1>
-  :triangle-exclamation: Processes the doctor is unable to stop
+  :triangle-exclamation: Processes the doctor is unable to stop (${ len([ alk_proc for alk_proc in alk_procs_field_data if alk_proc['verdict'] == 'immune' ]) })
   </summary>
   <hr>
   
@@ -400,7 +400,14 @@ content: |
   <hr>
   Your server is always running a bunch of processes unrelated to ALKiln, like celery processes. This doctor tries to list only processes it thinks have to do with ALKiln.
   
-  Each ALKiln {test run} sets off a process on your server containing the word "alkiln". That process sometimes sets off other processes. One possible example is {headless Chrome browser} processes that have the word "chrome" in them.
+  Each ALKiln {test run} sets off a process on your server containing the word "alkiln". That process sometimes sets off other processes. One possible example is {headless Chrome browser} processes that have the word "chrome" in them. An example of a process option:
+
+  <div markdown=1 class='alert alert-secondary'>
+  **Project**: FinancialStatementSSNBug[BR]
+  **Start**: 2026-05-10 20:34:15.540[BR]
+  **ID**: 2626418[BR]
+  **Commands**: [‘node’, ‘/var/www/.npm-global/bin/alkiln-run’, ‘@ssn’, ‘–sources=/tmp/playgroundsources/2/FinancialStatementSSNBug’]
+  </div>
 
   The processes you can choose below show these attributes:
   
@@ -413,7 +420,7 @@ content: |
 
   <div class='row g-2'>
   <dt class='col-3'>Start</dt>
-  <dd class='col-9' markdown=1>The time the test started.</dd>
+  <dd class='col-9' markdown=1>The time the {test run} started.</dd>
   </div>
 
   <div class='row g-2'>
@@ -423,7 +430,7 @@ content: |
 
   <div class='row g-2'>
   <dt class='col-3'>Commands</dt>
-  <dd class='col-9' markdown=1>Each process has a list of one or more commands that started the process. ALKiln {test run} commands will include the word 'alkiln' in them. A list of {headless Chrome browser} commands will have the word 'chrome'. For example, using `subprocess.Popen(['sleep', '4m'])` in your interview will set off a process with one command on the commands list: `['sleep', '4m']`.</dd>
+  <dd class='col-9' markdown=1>Each process has a list of one or more commands that started the process. ALKiln {test run} commands will include the word "alkiln" in them. A list of {headless Chrome browser} commands will include the word "chrome".</dd>
   </div>
   
   </dl>
@@ -587,8 +594,7 @@ subquestion: |
   </br>
 ---
 id: uninstall global alkiln npm package
-# TODO: Make this a background action once we abstract those
-# Note: Works fine when node_modules folder is missing.
+# TODO: Make this into a background action once we abstract bkg actions
 need:
   - uninstall_alkiln_bash
   - _add_and_log
@@ -605,10 +611,10 @@ code: |
   
   try:
     to_run = [
-      "bash", uninstall_alkiln_bash.path(),
-      "@suffolklitlab/alkiln"
+      'bash', uninstall_alkiln_bash.path(),
+      '@suffolklitlab/alkiln'
     ]
-    alk_uninstall_process = subprocess.run( to_run, env=dict( os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global" ), timeout=60, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    alk_uninstall_process = subprocess.run( to_run, env=dict( os.environ, NPM_CONFIG_PREFIX='/var/www/.npm-global' ), timeout=60, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
     if alk_uninstall_process.returncode == 0:
       ok = True
@@ -633,100 +639,9 @@ code: |
   }
 ---
 objects:
-  - uninstall_alkiln_bash: DAStaticFile.using(filename="data/sources/uninstall_global_npm_package.sh")
+  - uninstall_alkiln_bash: DAStaticFile.using(filename='data/sources/uninstall_global_npm_package.sh')
 ---
 # Delete the ALKiln node_modules folder
----
-comment: |
-  # Discuss including the questions below
-  # Discuss: include the questions below?
-  - "Have you tried installing the most recent version of ALKiln (or at least the most recent patch version)? If you don't know what a patch version is pick \"I don't know\"": tried_patched_version
-    input type: radio
-    choices:
-      - Yes: True
-      - No: False
-      - I don't know: dunno
-    show if: alkiln_installation_problems
-    label above field: True
-    required: False
-  - note: |
-      <div class='alert alert-info' markdown=1>
-      Installing the most recent version of ALKiln is most reliable. If you are unable to update to the most recent version of ALKiln, try updating to the most recent patch version of ALKiln before continuing.
-      </div>
-    show if: 
-      variable: tried_patched_version
-      is: False
-  - note: |
-      <div class='alert alert-info' markdown=1>
-      Getting the absolute latest version of ALKiln is often the most reliable way to fix problems. If you need an older major or minor version of ALKiln, getting the most recent patch version might still help.
-      
-      ALKiln uses [a format called "semantic versioning"](https://semver.org/) in its version numbers. The version number is made of three numbers seperated by periods (`.`). The first number is the major version, the second number is the minor version, and the third number describes the patch version. For example, an example of a version number is `5.4.10`. The major version is `5`, the minor version is `4`, and the patch version is `10`:
-
-      <div class='blockquote'>
-        <ol>
-          <li>MAJOR version [is for] incompatible API changes</li>
-          <li>MINOR version [is for new] functionality in a backward compatible manner</li>
-          <li>PATCH version [is for] backward compatible bug fixes</li>
-        </ol>
-        <div markdown=1>- https://semver.org</div>
-      </div>
-      
-      If you are unable to update your major or minor versions then updating your patch version to get all the bug fixes is better than nothing. Make sure you have the highest patch version possible.
-    
-      Many versions of ALKiln have no bug fixes and that can be fine. If you think your version might need bug fixes come talk to [the docassemble community](https://docassemble.org/docs/support.html) for support. You can also check our records of ALKiln's changes and updates, [our changelog](https://github.com/SuffolkLITLab/ALKiln/blob/HEAD/CHANGELOG.md), to see if that has helpful information.
-      </div>
-    show if:
-      variable: tried_patched_version
-      is: dunno
-  ####
-  - "Have you tried talking to [the docassemble community](https://docassemble.org/docs/support.html) about the problem you are having?": tried_community
-    datatype: yesnoradio
-    label above field: True
-    required: False
-  - note: |
-      <div class='alert alert-info' markdown=1>
-      We highly recommend you discuss your problem with [the docassemble community](https://docassemble.org/docs/support.html#slack) or [SuffolkLITLab's Document Assembly Line](https://assemblyline.suffolklitlab.org/docs/get_started#join-the-community) community before you continue. You can often find our developers in those places.
-      </div>
-    show if: 
-      variable: tried_community
-      is: False
-  ####
-  - Do you or your collegues have access to ssh into this docassemble server?: have_ssh_access
-    datatype: yesnoradio
-    show if: tried_alkip
-    label above field: True
-  - note: |
-      This button might be your best option then. Go forth and press the button!
-    show if: 
-      variable: have_ssh_access
-      is: False
-  - Are you or your collegues familiar with nodejs or npm packages?: know_npm
-    datatype: yesnoradio
-    show if: have_ssh_access
-    label above field: True
-  - note: |
-      This button might be your best option then. Go forth and press the button!
-    show if: 
-      variable: know_npm
-      is: False
-  - note: |
-      If you or a collegue has ssh access to your server and especially if either of you has experience with nodejs and npm, we recommend you use the ssh terminal to navigate to `/var/www/.npm-global/lib/node_modules` and try to repair the package other ways just in case ALKilnInThePlayground has a bug.
-    show if: 
-      variable: know_npm
-      is: True
-  ####
-  - Have you tried to re-install ALKiln at least twice using the normal ALKilnInThePlayground interview?: tried_alkip
-    datatype: yesnoradio
-    label above field: True
-    show if: tried_patched_version
-    required: False
-  - note: |
-      <div class='alert alert-info' markdown=1>
-      Before continuing try re-installing ALKiln at least twice using the normal ALKilnInThePlayground interview.
-      </div>
-    show if: 
-      variable: tried_alkip
-      is: False
 ---
 id: delete node_modules
 # Discuss: Encourage people to install the latest patch version? How to explain the concept succinctly and clearly?
