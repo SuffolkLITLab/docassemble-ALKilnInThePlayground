@@ -13,6 +13,10 @@ authors = [
     { name = "plocket", email = "52798256+plocket@users.noreply.github.com" },
 ]
 dependencies = []
+license = "MIT"
+license-files = [
+    "LICENSE",
+]
 
 [project.urls]
 Homepage = "https://docassemble.org"
