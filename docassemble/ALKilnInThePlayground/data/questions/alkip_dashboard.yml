@@ -19,11 +19,11 @@ code: |
 
   rand_num = random.random()
   if alk_dashboard_choice == 'processes':
-    # # For testing purposes. We will add our own alkiln config value later.
-    # if debugging and not sleeping:
-    #   import subprocess
-    #   subprocess.Popen(['sleep', '4m'])
-    #   sleeping = True
+    # For testing purposes. We will add our own alkiln config value later.
+    if debugging and not sleeping:
+      import subprocess
+      subprocess.Popen(['sleep', '4m'])
+      sleeping = True
     manage_alk_processes
   elif alk_dashboard_choice == 'package':
     manage_alk_package

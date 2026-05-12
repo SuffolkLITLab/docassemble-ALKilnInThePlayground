@@ -296,11 +296,11 @@ code: |
         if len( matching_field_data ) > 0:
           matching_field_data[0]['verdict'] = 'doomed'
 
-        # # For testing. TODO: Add more fine-grained config debug options.
-        # if debugging and count > 0:
-        #   # Only kill one process at a time to see all results pages types
-        #   break
-        # count += 1
+        # For testing. TODO: Add more fine-grained config debug options.
+        if debugging and count > 0:
+          # Only kill one process at a time to see all results pages types
+          break
+        count += 1
   
         _add_and_debug( alk_procs_kill_log, [ f'🐛 ALKP0025 INFO: Trying to kill { to_term_id }:', ])
         alk_proc_parent = psutil.Process( to_term_id )
@@ -518,6 +518,7 @@ fields:
 
   - What do you want to find out more about?: package_actions_info_choice
     datatype: radio
+    label above field: True
     choices:
       - Gently uninstalling just the ALKiln package: uninstall
       - Deleting the `node_modules` folder: delete_node_modules_folder
@@ -657,7 +658,7 @@ terms:
 question: |
   :heart-circle-exclamation: Delete ALKiln's `node_modules` folder
 subquestion: |
-  :dragon: This is an advanced topic.
+  _:dragon: This is an advanced topic._
 
   You might delete {the /var/www/.npm-global/lib/node_modules folder} if your version of ALKiln is misbehaving, especially if you already tried to uninstal and reinstal ALKiln with no improvement. Behavior to look for:
 
