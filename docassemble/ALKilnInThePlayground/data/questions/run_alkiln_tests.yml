@@ -566,10 +566,6 @@ code: |
       # Ensure tests don't re-run, even (especially) if they error
       has_run_tests = True
 
-      # Get the process id of the subprocess
-      test_run_pid = process.pid
-      log( f'□□□ Running ALKiln tests with process ID { test_run_pid }' )
-
       start_process_wait_time = current_datetime()
       # `.communicate()` `timeout` is in seconds
       # 60 seconds * 60 minutes * 12 hours
@@ -578,6 +574,10 @@ code: |
         timeout_env_var_name,
         60 * 60 * 12
       )
+
+      # Get the process id of the subprocess
+      test_run_pid = process.pid
+      log(f'''💡 ALKP0023 INFO: Starting ALKiln tests with process ID { test_run_pid }. This process will run for a maximum of { max_run_time } seconds''')
       
       try:
         # Get output tuple: `(stdout_data, stderr_data)`
