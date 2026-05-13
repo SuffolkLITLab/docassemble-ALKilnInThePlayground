@@ -1,0 +1,20 @@
+h2 {
+  font-size: calc(1.275rem + .3vw);
+}
+
+h3 {
+  font-size: 1.25rem;
+}
+
+#daquestion .alert {
+  height: fit-content;
+  max-height: fit-content;
+}
+
+.alk_wide_button {
+  width: 100%;
+}
+
+.alk_no_processes, .alk_all_clean {
+  padding-bottom: 1em;
+}

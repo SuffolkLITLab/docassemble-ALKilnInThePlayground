@@ -1,11 +1,6 @@
-license = "MIT"
-license-files = [
-    "LICENSE",
-]
-
 [build-system]
 requires = [
-    "setuptools==80.9.0",
+    "setuptools>=80.9.0",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -18,6 +13,10 @@ authors = [
     { name = "plocket", email = "52798256+plocket@users.noreply.github.com" },
 ]
 dependencies = []
+license = "MIT"
+license-files = [
+    "LICENSE",
+]
 
 [project.urls]
 Homepage = "https://docassemble.org"

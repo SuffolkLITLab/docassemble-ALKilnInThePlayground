@@ -43,6 +43,12 @@ Format:
 -
 -->
 
+## [Unreleased]
+
+### Added
+
+- Dashboard/doctor tools for managing and cleaning up ALKiln processes, package, and runtime_config.json.
+
 ## [1.4.1] - 2025-11-01
 
 ### Added

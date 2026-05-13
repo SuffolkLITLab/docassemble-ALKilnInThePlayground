@@ -159,9 +159,14 @@ header h2:has(div) {
   padding-left: 1em;
 }
 
-.alert-danger, .alert-warning {
-  height: fit-content;
-  max-height: fit-content;
+#daquestion {
+  & .alert-danger,
+  & .alert-warning,
+  & .alert-info,
+  & .alert-success {
+    height: fit-content;
+    max-height: fit-content;
+  }
 }
 .alert > :last-child {
   margin-bottom: 0;

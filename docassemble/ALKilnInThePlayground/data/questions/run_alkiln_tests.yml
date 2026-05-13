@@ -32,6 +32,7 @@ include:
   - validate.yml
   - generate.yml
   - headers.yml
+  - logs.yml
 ---
 features:
   css:
@@ -1122,7 +1123,7 @@ code: |
       # action, even when the task is revoked, so we can kill
       # the process
       test_run_pid = process.pid
-      log(f"""💡 ALKiln INFO: Running ALKiln tests with process ID { test_run_pid }. This process will run for a maximum of { max_run_time } seconds""" )
+      log(f"""💡 ALKP0023 INFO: Starting ALKiln tests with process ID { test_run_pid }. This process will run for a maximum of { max_run_time } seconds""" )
 
       start_process_wait_time = current_datetime()
       
@@ -2482,72 +2483,6 @@ code: |
     """
     cmd_exists = os.path.isfile(f"/var/www/.npm-global/bin/{ bin_name }")
     return cmd_exists
----
----
-code: |
-  def _log( to_log, where="log" ):
-    """
-    Logs `to_log` to the desired location and the console.
-
-    Args:
-        to_log (str): Message to log.
-        where (str): A valid 2nd argument to docassemble `log()`. Ex: 'console'
-    """
-    log( to_log, where )
-    if where != "console":
-      log( to_log, "console" )
-    return ''
----
-need:
-  - debugging
-code: |
-  def _debug( to_log, where="log" ):
-    """
-    Logs the object representation or the string of `to_log` to the desired
-        location and the console if the debug flag is on.
-
-    Args:
-        to_log (str): Value to log.
-        where (str): A valid 2nd argument to docassemble `log()`. Ex: 'console'
-    """
-    if debugging == True or debugging == "true" or debugging == "True" or debugging == "TRUE" or debugging == "1":
-      try:
-        log( repr( to_log ), where )
-        if where != "console":
-          log( repr( to_log ), "console" )
-      except:
-        try:
-          log( to_log, where )
-          if where != "console":
-            log( to_log, "console" )
-        except:
-          pass
-    return ''
----
-code: |
-  debugging = alkiln_config_vars.get('alkip_debug', False) or alkiln_config_vars.get("alkiln_debug", False)
----
----
-code: |
-  docassemble_log_link = f"""<a target="_blank" href="{ url_of('root', _external=True) }/logs?file=docassemble.log">your docassemble.log</a>"""
-  
-  worker_log_link = f"""<a target="_blank" href="{ url_of('root', _external=True) }/logs?file=worker.log">your worker.log</a>"""
----
-need:
-  - docassemble_log_link
-code: |
-  da_log_more_info = f"Your { docassemble_log_link } might have more information."
----
-need:
-  - worker_log_link
-code: |
-  worker_log_more_info = f"Your { worker_log_link } might have more information."
----
-need:
-  - docassemble_log_link
-  - worker_log_link
-code: |
-  logs_more_info = f"Your { docassemble_log_link } or { worker_log_link } might have more information."
 ---
 ---
 # Default
