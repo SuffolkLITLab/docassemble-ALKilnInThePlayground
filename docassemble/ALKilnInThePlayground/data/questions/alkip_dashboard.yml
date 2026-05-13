@@ -15,9 +15,6 @@ id: interview order
 need:
   - debugging
 code: |
-  import random
-
-  rand_num = random.random()
   if alk_dashboard_choice == 'processes':
     # For testing purposes. We will add our own alkiln config value later.
     # if debugging and not sleeping:

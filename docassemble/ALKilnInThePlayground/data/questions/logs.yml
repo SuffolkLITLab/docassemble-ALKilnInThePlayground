@@ -64,7 +64,7 @@ code: |
     try:
       log( to_log, where )
       if where != 'console':
-        if debugging == True or debugging.lower() == "true" or int( debugging ) == 1:
+        if debugging:
           log( to_log, 'console' )
     except Exception:
       _debug('Why?')
@@ -83,7 +83,7 @@ code: |
         to_log (str): Value to log.
         where (str): A valid 2nd argument to docassemble `log()`. Ex: 'console'
     """
-    if debugging == True or debugging.lower() == "true" or int( debugging ) == 1:
+    if debugging:
       try:
         log( repr( to_log ), where )
         if where != "console":
@@ -129,9 +129,17 @@ code: |
       desired_time = datetime.fromtimestamp( timestamp )
     return  desired_time.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 ---
+# Our internal debugging
 reconsider: True
+need:
+  - alkiln_config_vars
 code: |
-  debugging = alkiln_config_vars.get('alkip_debug', False) or alkiln_config_vars.get("alkiln_debug", False)
+  debug_temp = alkiln_config_vars.get('alkip_debug', False) or alkiln_config_vars.get("alkiln_debug", False)
+  debugging = debug_temp and (
+    debug_temp == True
+    or debug_temp == 1
+    or str(debug_temp.lower()) == 'true'
+  )
 ---
 # Discuss: Move this value to a shared vars yml.
 reconsider: True
