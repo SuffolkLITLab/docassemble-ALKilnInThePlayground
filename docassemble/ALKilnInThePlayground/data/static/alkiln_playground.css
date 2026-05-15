@@ -2,6 +2,16 @@
   color: var(--bs-light-text);
 }
 
+#daquestion {
+  & .alert-danger,
+  & .alert-warning,
+  & .alert-info,
+  & .alert-success {
+    height: fit-content;
+    max-height: fit-content;
+  }
+}
+
 #alkiln_test_output h2 {
   font-size: 1.5em
 }
