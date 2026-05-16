@@ -43,11 +43,15 @@ Format:
 -
 -->
 
-## [Unreleased]
+## [1.3.2] - 2024-02-25
 
 ### Added
 
 - Dashboard/doctor tools for managing and cleaning up ALKiln processes, package, and runtime_config.json. See https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/82.
+
+### Security
+
+- Use new and old `npm install` flags to strengthen `npm install` security. See a thorough write-up of the problem and solution at https://github.com/SuffolkLITLab/ALKiln/issues/1053.
 
 ## [1.3.1] - 2024-02-25
 
