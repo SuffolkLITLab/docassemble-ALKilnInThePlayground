@@ -43,11 +43,19 @@ Format:
 -
 -->
 
-## [Unreleased]
+<!-- ## [Unreleased] -->
+
+## [1.5.0] - 2026-05-13
+
+### Changed
+
+- Corrected text typos.
+
+## [1.5.0] - 2026-05-13
 
 ### Added
 
-- Dashboard/doctor tools for managing and cleaning up ALKiln processes, package, and runtime_config.json.
+- Dashboard/doctor tools for managing and cleaning up ALKiln processes, package, and runtime_config.json. See https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/82.
 
 ## [1.4.1] - 2025-11-01
 
