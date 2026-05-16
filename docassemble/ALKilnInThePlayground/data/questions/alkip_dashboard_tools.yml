@@ -540,7 +540,7 @@ subquestion: |
   - You are running into errors when you try to install a new version of ALKiln.
   - Your test failure messages seem unrelated to your actual tests.
 
-  This often happens if an author starts to install a new versionf of ALKiln and cancels in the middle.
+  This often happens if an author starts to install a new version of ALKiln and cancels in the middle.
 
   Uninstalling ALKiln is a pretty gentle way to try to resolve these types of problems. If you are unsure, feel free to come talk to ALKiln's developers in the `alkiln_automated_testing` channel in [the docassemble Slack](https://docassemble.org/docs/support.html#slack).
   
@@ -660,12 +660,12 @@ question: |
 subquestion: |
   _:dragon: This is an advanced topic._
 
-  You might delete {the /var/www/.npm-global/lib/node_modules folder} if your version of ALKiln is misbehaving, especially if you already tried to uninstal and reinstal ALKiln with no improvement. Behavior to look for:
+  You might delete {the /var/www/.npm-global/lib/node_modules folder} if your version of ALKiln is misbehaving, especially if you already tried to uninstall and reinstall ALKiln with no improvement. Behavior to look for:
 
   - You are running into errors when you try to install a new version of ALKiln.
   - Your test failure messages are strange and seem unrelated to your actual tests.
 
-  This often happens if an author starts to install a new versionf of ALKiln and cancels in the middle. Deleting the `/var/www/.npm-global/lib/node_modules` folder is a bigger step than uninstalling. The questions below can help you make sure you are prepared.
+  This often happens if an author starts to install a new version of ALKiln and cancels in the middle. Deleting the `/var/www/.npm-global/lib/node_modules` folder is a bigger step than uninstalling. The questions below can help you make sure you are prepared.
 
   ALKilnInThePlayground will stay installed when you delete the `node_modules` folder.
 
