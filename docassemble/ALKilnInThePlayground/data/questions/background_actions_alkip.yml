@@ -1,0 +1,398 @@
+---
+# Our instances of background actions and associated values
+# Discuss: Keep these in the main file
+---
+include:
+  - logs.yml
+  - background_actions_wrappers.yml
+---
+# ##################################
+# Sections possible for each background action and wrappers:
+# ##################################
+---
+# Unique wrapper: Dynamic (action description)
+# Required
+---
+# Background action: Logic (action description)
+# Required
+---
+# Screens (action description)
+# Optional
+# Discuss: Should some or all screens be in the main file? A different file?
+#   Consider keeping blocks you edit together visually proximate.
+---
+# Action-needed values: Dynamic (action description)
+# Optional
+---
+# Action-needed values: Defaults (action description)
+# Optional
+---
+# Action-needed values: Hard-coded (action description)
+# Optional
+---
+# Wrapper state: Dynamic (action description)
+# At least failure
+---
+# Wrapper state: Defaults (action description)
+# Optional
+---
+# Wrapper values: Hard-coded (action description)
+# Required
+---
+# Wrapper values: Set once (action description)
+# Optional
+---
+# Shared values: Hard-coded (action description)
+# Optional
+---
+# ##################################
+# Objects
+# ##################################
+---
+objects:
+  install: DAObject
+  tests: DAObject
+  artifacts: DAObject
+  npm: DAObject
+  generation: DAObject
+---
+---
+---
+# ##################################
+# NPM connection
+# ##################################
+# Note: no canceling
+---
+# Unique wrapper: Dynamic (npm connection)
+---
+id: try to connect to npm
+need:
+  - npm.action.phase
+code: |
+  if not npm.action.phase in ('failed', 'succeeded', 'canceled'):
+    npm.action.run
+---
+id: npm connection task
+code: |
+  npm.action.task = background_action('check_npm_connection')
+---
+# Background action: Logic (npm connection)
+id: npm connection action
+event: check_npm_connection
+need:
+  - _add_and_log
+  - _log
+  - format_error
+  - wrap_text
+  - worker_log_link
+  - npm.action.did_start
+  - npm.action.task_data
+  - npm.ui.description
+  - try_to_connect
+code: |
+  # ------------- Failure fallback -------------
+  background_error_action("fail_npm_action")
+
+  # ------------- Default values -------------
+  npm_general_err_log = wrap_text( f"""🤕 ALKiP ERROR: ALKilnInThePlayground ran into an error when it was trying to check the connection to the servers that store ALKiln. Look above for more details and check your { worker_log_link }.""")
+
+  # ------------- Guard the action -------------
+  if npm.action.did_start:
+
+    _add_and_log( npm.action.task_data['logs'], [ wrap_text( f"""🔎 ALKiP WARNING: Tried to re-run the { npm.ui.description } task. Docassemble was seeking `{ current_context().variable }`. Your { worker_log_link } may have more info.""") ])
+    npm.action.task_data['ok'] = False
+    npm.action.task_data['repeated'] = True
+    background_response( npm.action.task_data )
+  
+  npm.action.did_start = True
+
+  # ------------- Run -------------
+  try:
+    # { 'ok': False, 'logs': [], 'pre_logs_msg': '' }
+    conn_data = try_to_connect()
+    npm.action.task_data['ok'] = conn_data['ok']
+    npm.action.task_data['pre_logs_msg'] = conn_data['pre_logs_msg']
+    npm.action.task_data['logs'] = npm.action.task_data['logs'] + conn_data['logs']
+  
+  except Exception as npm_connection_attempt_error:
+    _add_and_log( npm.action.task_data['logs'], [ wrap_text( f'''🤕 ALKiP ERROR: ALKiP internal development error when trying to connect to npm.'''), format_error( npm_connection_attempt_error ) ])
+    npm.action.task_data['ok'] = False
+
+  # ------------- Complete fully -------------
+  background_response( npm.action.task_data )
+---
+# Screens (npm connection)
+---
+# Discuss: Should `.wait` belong to `.ui` or `.action`? Maybe `.ui` should be kept for definitely persistent values. Maybe it should be called `.persistent`
+# Discuss: Should all screens be in the main file?
+id: npm html wait screen
+event: npm.action.wait
+prevent going back: True
+reload: 5
+question: |
+  :plug: One sec, checking the connection to the servers that store ALKiln
+subquestion: |
+  <div class="spinner-container d-flex justify-content-center">
+  <div class="spinner-border" role="status">
+    <span class="visually-hidden">Checking for ALKiln package...</span>
+  </div>
+  </div>
+  
+  This is supposed to take no more than about 15 seconds.
+
+  In future, ALKiln developers plan to change the order of these operations so that you will have the option to go straight to running your tests.
+
+  :clock: **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=npm.action.start_time ).delta) }**[BR]
+  (Updates about every 5 seconds depending on your server speed)
+---
+# Action-needed values: Dynamic (npm connection)
+---
+id: check npm connection works
+need:
+  - _add_and_log
+  - format_error
+  - wrap_text
+code: |
+  import requests
+  import traceback
+
+  def try_to_connect(url: str = "https://registry.npmjs.org/", timeout: float = 5.0):
+    """
+    Perform a GET request that times‑out after `timeout` seconds. Return
+    dict with info about connection attempts.
+
+    TODO: try using npm ping. Would it raise an error on 500s, etc?
+
+    Args:
+        url (str): url to try to reach
+        timeout (float): Maximum time allowed for the request
+
+    Returns:
+      dict {
+        'ok' (bool): True if ran into an error.
+        'logs' ([str]): List of logs to show in the console.
+        'pre_log_msg' (str): Text to show in a paragraph before the logs.
+      }
+    """
+
+    connection_data = { 'ok': False, 'logs': [], 'pre_logs_msg': '' }
+    connection_data['pre_logs_msg'] = 'ALKilnInThePlayground was unable to connect to the servers that store ALKiln.'
+  
+    try_later = 'To install any ALKiln version you might have to try again later.'
+    we_cant_help = 'The ALKiln team is unable to help with this problem.'
+  
+    try:
+      response = requests.get(url, timeout=timeout)
+      response.raise_for_status()
+      connection_data["ok"] = response.ok
+      connection_data['pre_logs_msg'] = "ok"
+  
+    except requests.exceptions.ConnectionError as conn_err:
+      # Alt: This server isn't connected to the internet or there is some
+      #     other connection problem
+      # Discuss: More detailed explanations have more info, but are a
+      #     possible rabbit hole for the authors:
+      #     'ALKiln is stored on a third-party server that we trust, npmjs.'
+      connection_data['pre_logs_msg'] = f'ALKilnInThePlayground is unable to connect to the server where ALKiln is stored. { we_cant_help } { try_later }'
+      _add_and_log( connection_data['logs'], [
+        wrap_text( f'''🤕 ALKiP ERROR: npmjs ConnectionError. ALKilnInThePlayground is unable to connect to the servers where ALKiln is stored. The author's docassemble server might be disconnected from the internet, npmjs' server may be unavailable, or something else may be wrong. { we_cant_help } { try_later } Stacktrace:'''),
+        format_error( conn_err )
+      ])
+
+    except requests.exceptions.HTTPError as http_err:
+      if response.status_code >= 400 and response.status_code < 500:
+        connection_data['ok'] = False
+        connection_data['pre_logs_msg'] = f'ALKilnInThePlayground sent an incorrect request to the servers that store ALKiln and got a { response.status_code } response code. Please get in touch with the ALKiln developers.'
+        _add_and_log( connection_data['logs'], [ wrap_text( f'''🤕 ALKiP ERROR: { connection_data['pre_logs_msg'] }'''), format_error( http_err ) ])
+  
+      if response.status_code >= 500 and response.status_code < 600:
+        connection_data['ok'] = False
+        connection_data['pre_logs_msg'] = f'The servers that store the ALKiln package were unavailable. ALKilnInThePlayground got a { response.status_code } response code. { try_later }'
+        _add_and_log( connection_data['logs'], [ wrap_text( f'''🤕 ALKiP ERROR: { connection_data['pre_logs_msg'] }'''), format_error( http_err ) ])
+      
+  
+    except requests.RequestException as req_err:
+      connection_data['pre_logs_msg'] = 'ALKilnInThePlayground ran into a "RequestException" error when it tried to connect to the server that stores the ALKiln package. { try_later }'
+      _add_and_log( connection_data['logs'], [
+        wrap_text( f'''🤕 ALKiP ERROR: { connection_data['pre_logs_msg'] } Stacktrace:'''),
+        format_error( req_err )
+      ])
+  
+    except Exception as general_err:
+      connection_data['pre_logs_msg'] = f'ALKilnInThePlayground ran into a "{ type( general_err ).__name__ }" error when it tried to connect to the server that stores the ALKiln package. { try_later }'
+      _add_and_log( connection_data['logs'], [
+        wrap_text( f'''🤕 ALKiP ERROR: { connection_data['pre_logs_msg'] } Stacktrace:'''),
+        format_error( general_err )
+      ])
+
+    return connection_data
+---
+# Action-needed values: Defaults (npm connection)
+# None
+---
+# Action-needed values: Hard-coded (npm connection)
+# None
+---
+# Wrapper state: Dynamic (npm connection)
+---
+event: fail_npm_action
+need:
+  - _log
+code: |
+  fail_npm_action_msg = f"""
+  { action_argument("error_type") } { action_argument("error_message") }: { action_argument("error_trace") }
+  Docassemble was looking for these variables:
+  { action_argument("variables") }
+  """
+  background_response({
+    'ok': False,
+    'repeated': False,
+    'interrupted': False,
+    'logs': [ fail_npm_action_msg ]
+  })
+---
+id: re-check npm connection
+event: re_check_npm_connection
+code: |
+  npm.action.undefine
+---
+# Wrapper state: Defaults (npm connection)
+# None
+---
+# Wrapper values: Hard-coded (npm connection)
+---
+id: npm connection task description
+code: |
+  npm.ui.description = 'check npm connection'
+---
+id: npm task can continue on failure
+code: |
+  npm.action.continue_on_failure = True
+---
+id: unnecessary cancel key for npm task
+code: |
+  npm.action.cancel_key = 'cancel_npm_unnecessary'
+---
+# Wrapper values: Set once (npm connection)
+# None
+---
+# Shared values: Hard-coded (npm connection)
+# None
+---
+---
+---
+# ##################################
+# ALKiln Installation
+# ##################################
+---
+# Unique wrapper: Dynamic (installing alkiln)
+# Required
+---
+# Background action: Logic (installing alkiln)
+# Required
+---
+# Screens (installing alkiln)
+# Optional
+---
+# Action-needed values: Dynamic (installing alkiln)
+# Optional
+---
+# Action-needed values: Defaults (installing alkiln)
+# Optional
+---
+# Action-needed values: Hard-coded (installing alkiln)
+# Optional
+---
+# Wrapper state: Dynamic (installing alkiln)
+# At least failure
+---
+# Wrapper state: Defaults (installing alkiln)
+# Optional
+---
+# Wrapper values: Hard-coded (installing alkiln)
+# Required
+---
+# Wrapper values: Set once (installing alkiln)
+# Optional
+---
+# Shared values: Hard-coded (installing alkiln)
+# Optional
+---
+---
+---
+# ##################################
+# ALKiln tests (test run)
+# ##################################
+---
+# Unique wrapper: Dynamic (test run)
+# Required
+---
+# Background action: Logic (test run)
+# Required
+---
+# Screens (test run)
+# Optional
+---
+# Action-needed values: Dynamic (test run)
+# Optional
+---
+# Action-needed values: Defaults (test run)
+# Optional
+---
+# Action-needed values: Hard-coded (test run)
+# Optional
+---
+# Wrapper state: Dynamic (test run)
+# At least failure
+---
+# Wrapper state: Defaults (test run)
+# Optional
+---
+# Wrapper values: Hard-coded (test run)
+# Required
+---
+# Wrapper values: Set once (test run)
+# Optional
+---
+# Shared values: Hard-coded (test run)
+# Optional
+---
+---
+---
+# ##################################
+# Test run artifacts
+# ##################################
+---
+# Unique wrapper: Dynamic (artifacts)
+# Required
+---
+# Background action: Logic (artifacts)
+# Required
+---
+# Screens (artifacts)
+# Optional
+---
+# Action-needed values: Dynamic (artifacts)
+# Optional
+---
+# Action-needed values: Defaults (artifacts)
+# Optional
+---
+# Action-needed values: Hard-coded (artifacts)
+# Optional
+---
+# Wrapper state: Dynamic (artifacts)
+# At least failure
+---
+# Wrapper state: Defaults (artifacts)
+# Optional
+---
+# Wrapper values: Hard-coded (artifacts)
+# Required
+---
+# Wrapper values: Set once (artifacts)
+# Optional
+---
+# Shared values: Hard-coded (artifacts)
+# Optional
+---

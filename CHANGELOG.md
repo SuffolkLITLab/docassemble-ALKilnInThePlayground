@@ -43,7 +43,24 @@ Format:
 -
 -->
 
-<!-- ## [Unreleased] -->
+## [Unreleased]
+
+### Changed
+
+- Show logs of background actions. See [73](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/73).
+- Added a screen to wait for `npm` server check. `npm` is the package registry that stores ALKiln's code.
+- Added a screen to wait for building the tests output.
+
+### Fixed
+
+- Race condition errors when running background actions with processes (running tests, installing alkiln), especially when canceling.
+
+### Internal
+
+- Stopped using `revoke()` to stop background actions as they were the source of the race conditions because of concurrency lock timeout issues. See [#71](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/71).
+- NPM connection check and final screen data creation are now background actions. See [#79](https://github.com/SuffolkLITLab/docassemble-ALKilnInThePlayground/issues/79).
+- Abstracted background actions.
+
 
 ## [1.5.0] - 2026-05-13
 

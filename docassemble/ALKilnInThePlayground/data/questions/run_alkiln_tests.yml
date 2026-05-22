@@ -11,6 +11,7 @@
 # TODO: Add more ids, including for code blocks
 # Discuss: Show the user's username to them? Not great for recording anonymized runs through the interview, but it would put the information front and center. People have gotten confused before when exploring other user's sessions and, I believe, Projects.
 # Discuss: Allow authors to run tests in other people's Playgrounds when they have permissions to open sessions and Playgrounds of other users while they are exploring those Playgrounds.
+# Discuss: Make names.yml for safe names, timestamps, etc? strings.yml? special_strings.yml? text.yml instead? Include text manipulation?
 # Research: exactly how do ids on code blocks affect the cache
 
 # NOTES
@@ -28,11 +29,11 @@ metadata:
     See guides for writing tests in the [ALKiln documentation](https://assemblyline.suffolklitlab.org/docs/alkiln/writing/).
 ---
 include:
+  - logs.yml
   - artifacts.yml
   - validate.yml
   - generate.yml
   - headers.yml
-  - logs.yml
 ---
 features:
   css:
@@ -47,7 +48,7 @@ features:
 mandatory: True
 id: interview order
 need:
-  - npm_connection_msg
+  - npm.action.phase
   - _log
   - _debug
 code: |
@@ -72,9 +73,10 @@ code: |
   _debug( f"""url_args: { url_args }""" )
   if url_args.get( "skip_install", False ) != "true" and version_error == "":
     ask_version
-  
-    if npm_connection_msg == "ok" and ( wants_install or invalid_install ):
 
+    if not npm.action.phase in ('failed', 'succeeded', 'canceled'):
+      npm.action.run
+    if npm.ui.data.get('ok', False) and ( wants_install or invalid_install ):
       # alkiln_current_version = "5.15.0" # testing
       # alkip_version = "1.3.1"  # testing
   
@@ -232,7 +234,9 @@ code: |
 code: |
   undefine_install_task = False  # Default
 ---
-if: npm_connection_msg == "ok"
+need:
+  - npm.ui.data
+if: npm.ui.data.get('ok', False)
 code: |
   import subprocess
   import json
@@ -288,7 +292,9 @@ code: |
     alkiln_version_list = []
     version_error = ''
 ---
-if: npm_connection_msg != "ok"
+need:
+  - npm.ui.data
+if: not npm.ui.data.get('ok', False)
 code: |
   alkiln_major_versions = []
   alkiln_prerelease_versions = []
@@ -341,19 +347,25 @@ validation code: |
     validation_error('You must install a version of ALKiln')
 ---
 # TODO: Test these different versions of the first page show up at the right times
+# TODO: Switch to console copy functionality when we implement that. Include text conversion to preserve links, etc.
 id: pick which task, with offline and no alkiln installed
 event: ask_version
 if: |
-  npm_connection_msg != "ok" and ('Could not get' in get_installed_version() or invalid_install)
+  not npm.ui.data.get('ok', False) and ('Could not get' in get_installed_version() or invalid_install)
 need:
-  - npm_connection_msg
+  - npm.ui.data
   - get_installed_version
   - invalid_install
+  - link_start_regex
+  - link_end_regex
 question: |
   Unable to install ALKiln
 subquestion: |
-  <div class="alert alert-danger">
-  Unfortunately ALKilnInThePlayground is unable to install ALKiln right now. ${ npm_connection_msg }
+  <div markdown=1 class="alert alert-danger">
+  Unfortunately ALKilnInThePlayground is unable to install ALKiln right now. ${ npm.ui.data.get('pre_logs_msg', '') }
+  
+  <pre class="p-2">${ str( npm.ui.logs or [] ).strip().replace("<a", "ªªªª").replace("</a", "§§§§").replace("<", "&lt;").replace("ªªªª", "<a").replace("§§§§", "</a") }</pre>
+  
   </div>
 
   It also looks like you either don't have ALKiln installed yet or perhaps a previous installation of ALKiln got messed up. For example, someone may have started installing a version and the installation got interrupted at an unfortunate time.
@@ -365,25 +377,30 @@ action buttons:
     icon: undo
     color: warning
 ---
+code: |
+  import re
+  link_start_regex = r'\<a\b'
+  link_end_regex = r'\<\a\b'
+---
 # TODO: (For the future) Don't need `if` around news request I think. Double check.
 # Discuss: Add explicit refresh button
 id: which task but with prexisting version
 if: |
   not 'Could not get' in get_installed_version() and not invalid_install
 need:
-  - npm_connection_msg
+  - npm.ui.data
   - invalid_install
   - get_installed_version
 question: |
   ALKiln version
 subquestion: |
-  % if npm_connection_msg == "ok":
+  % if npm.ui.data.get('ok', False):
   ${ pre_install_request_news_template }
   % endif
   
   This server's current version of ALKiln is **${ get_installed_version() }**
   
-  % if npm_connection_msg == "ok":
+  % if npm.ui.data.get('ok', False):
   Do you want to install a different version of ALKiln before testing? While ALKiln is installing you should **try very hard to avoid**:
       
   - Saving a python module
@@ -394,7 +411,9 @@ subquestion: |
   Skip this page to just run the tests.
   
   <div class="alert alert-secondary">
-  Note: This interview is unable to install any version of ALKiln right now. ${ npm_connection_msg }
+  Note: This interview is unable to install any version of ALKiln right now. ${ npm.ui.data.get('pre_logs_msg', '') }
+  
+  <pre class="p-2">${ str( npm.ui.get('logs', []) ).strip().replace("<a", "ªªªª").replace("</a", "§§§§").replace("<", "&lt;").replace("ªªªª", "<a").replace("§§§§", "</a") }</pre>
   </div>
 
   You can still continue to run tests with your current version of ALKiln.
@@ -405,7 +424,7 @@ fields:
     datatype: yesno
     show if:
       code: |
-        npm_connection_msg == "ok"
+        npm.ui.data.get('ok', False)
   - Choose an ALKiln version: version_to_install
     js show if:
       val('wants_install') && !val('wants_experimental')
@@ -427,82 +446,6 @@ code: |
     started_with_different_version = True
   else:
     started_with_different_version = False
----
-id: try to connect to npm
-need:
-  - try_to_connect
-reconsider: True
-code: |
-  npm_connection_msg = try_to_connect()
----
-id: check npm connection works
-code: |
-  import requests
-  import traceback
-  
-  def try_to_connect(url: str = "https://registry.npmjs.org/", timeout: float = 5.0):
-    """
-    Perform a GET request that times‑out after `timeout` seconds. Return
-    message about connection attempts.
-    Log requests.HTTPError for 4xx/5xx status codes.
-
-    TODO: Separate the visual connection message from the connection message
-    logs since we seem to want to give different levels of details in those
-    two places sometimes.
-
-    Args:
-        url (str): url to try to reach
-        timeout (float): Maximum time allowed for the request
-
-    Returns:
-      str: Message about connection attempts.
-    """
-    try_later = "To install any ALKiln version you might have to try again later."
-    we_cant_help = "The ALKiln team is unable to help with this problem."
-
-    connection_msg = "ALKilnInThePlayground was unable to connect to the servers that store ALKiln."
-  
-    try:
-      response = requests.get(url, timeout=timeout)
-      # response.raise_for_status()  # Don't raise an error
-
-      if response.status_code >= 400 and response.status_code < 500:
-        connection_msg = f"ALKilnInThePlayground sent an incorrect request to the servers that store ALKiln and got a { response.status_code } response code. Please get in touch with the ALKiln developers."
-        _log(f"🤕 ALKiln ERROR: { connection_msg }")
-        _log( traceback.format_exc() )
-  
-      if response.status_code >= 500 and response.status_code < 600:
-        connection_msg = f"The servers that store the ALKiln package were unavailable. ALKilnInThePlayground got a { response.status_code } response code. { try_later }"
-        _log(f"🤕 ALKiln ERROR: { connection_msg }")
-        _log( traceback.format_exc() )
-  
-      if response.ok:
-        connection_msg = "ok"
-  
-    except requests.exceptions.ConnectionError as con_err:
-      # This server isn't connected to the internet or there is some other
-      #     connection problem
-      # Discuss: More detailed explanations have more info, but are a possible
-      #     rabbit hole for the authors:
-      #     "ALKiln is stored on a third-party server that we trust, npmjs."
-      connection_msg = f'ALKilnInThePlayground is unable to connect to the server where ALKiln is stored. { we_cant_help } { try_later }'
-      _log(f"""🤕 ALKiln ERROR: npmjs ConnectionError. ALKilnInThePlayground is unable to connect to the servers where ALKiln is stored. The author's docassemble server might be disconnected from the internet, npmjs' server may be unavailable, or something else may be wrong. { we_cant_help } { try_later } Stacktrace:""")
-      _log( traceback.format_exc() )
-  
-    except requests.RequestException as req_err:
-      connection_msg = 'ALKilnInThePlayground ran into a "RequestException" error when it tried to connect to the server that stores the ALKiln package. { try_later }'
-      _log(f"🤕 ALKiln ERROR: { connection_msg } Stacktrace:")
-      _log( traceback.format_exc() )
-  
-    except Exception as general_err:
-      connection_msg = f'ALKilnInThePlayground ran into a "{ type( general_err ).__name__ }" error when it tried to connect to the server that stores the ALKiln package. { try_later }'
-      _log(f"🤕 ALKiln ERROR: { connection_msg } Stacktrace:")
-      _log( traceback.format_exc() )
-      # Discuss clarity of an alternative:
-      # _log( traceback.format_exc() )
-      # _log(f"🤕 ALKiln ERROR: { connection_msg } See the error message above.")
-
-    return connection_msg
 ---
 # Discuss: Should `if matches == None:` be an error path?
 need:
@@ -673,9 +616,9 @@ code: |
 
     return preprint
 ---
+need:
+  - format_error
 code: |
-  import traceback
-
   def log_broad_news_exception( current_error ):
     """
     Given an ALKiln notification error, log the error in the appropriate way.
@@ -702,10 +645,10 @@ code: |
     news_distributor_msg = f"🖊️ ALKiln NOTE: ALKilnInThePlayground was unable to get the ALKiln notifications that come with ALKiln v5.16.0 or above. Potentially more info:"
     if log_to_debug:
       _debug( news_distributor_msg )
-      _debug("\n".join( traceback.format_exception( broad_news_exception ) ))
+      _debug( format_error( broad_news_exception ))
     else:
       _log( news_distributor_msg )
-      _log("\n".join( traceback.format_exception( broad_news_exception ) ))
+      _log( format_error( broad_news_exception ))
   
     _debug("Logged broad news exception")
 ---
@@ -1033,6 +976,7 @@ need:
   - has_started_tests
   - worker_log_link
   - root_path
+  - format_error
 code: |
   import subprocess
   import signal
@@ -1148,11 +1092,9 @@ code: |
       log(timeout_output)
   
     except Exception as test_run_error:
-      import traceback
-  
       # We get here even when the sub-processes fail
       log(f"""💡 ALKiln INFO: The test subprocess completed with the returncode { returncode }:""" )
-      log("\n".join( traceback.format_exception( test_run_error ) ))
+      log( format_error( test_run_error ))
 
       # Throw error if the process (not the tests) failed
       # Discuss: what should behavior here be? Where do we catch it
@@ -1183,7 +1125,7 @@ code: |
         pass
       except Exception as termination_error:
         log('🤕 ALKiln ERROR ALKP0011: Error while stopping tests:')
-        log("\n".join( traceback.format_exception( termination_error ) ))
+        log( format_error( termination_error ))
         
       # === Output ===
   
@@ -1511,6 +1453,7 @@ need:
   - folder_path
   - folder_name
   - da_log_more_info
+  - format_error
 code: |
   import subprocess
   
@@ -1550,14 +1493,12 @@ code: |
     except FileNotFoundError as zip_process_error:
       zipping_did_error = True
       _log( f'🔎 ALKiln WARNING: could not find the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
-      import traceback
-      _log("\n".join( traceback.format_exception( zip_process_error ) ))
+      _log( format_error( zip_process_error ))
       
     except Exception as zip_process_error:
       zipping_did_error = True
       _log( f'🤕 ALKiln ERROR: subprocess errored when ALKilnInThePlayground tried to zip the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
-      import traceback
-      _log("\n".join( traceback.format_exception( zip_process_error ) ))
+      _log( format_error( zip_process_error ))
 
     if zipping_did_error:
       return f"""
@@ -1915,7 +1856,7 @@ code: |
       <div class="statuses">
         <span class="copy_default">Copy</span>
         <span class="copy_done">Copied!</span>
-        <span class="copy_cancelled">Cancelled copy</span>
+        <span class="copy_canceled">Canceled copy</span>
       </div>
     </button>
   </div>"""
@@ -2484,8 +2425,65 @@ code: |
     cmd_exists = os.path.isfile(f"/var/www/.npm-global/bin/{ bin_name }")
     return cmd_exists
 ---
+# ##################################
+# Dynamic
+# ##################################
 ---
-# Default
+# ⚠️ Doing this with a function takes waaaay longer
+# Discuss: Should `if matches == None:` be an error path instead?
+
+# Sets string to print for the version number or an error message with
+#   'Could not get'.
+#   Discuss: a better way to fail. Separate the error messages from the
+#   failure itself.
+# 
+# Sets:
+#   server_alkiln_version (str): The version number or an error to show
+#     the user.
+
+id: set the version number of alkiln
+need:
+  - da_log_more_info
+  - _debug
+  - nice_time
+code: |
+  import subprocess
+  import re
+
+  # https://stackoverflow.com/a/13332300
+  # npm list -g --prefix /var/www/.npm-global --depth 0 -p -l
+  packages = subprocess.run(['npm', 'list', '@suffolklitlab/alkiln', '-g', '--prefix', '/var/www/.npm-global', '--depth', '0', '-p', '-l'], check=False, capture_output=True)
+  # What would cause an error here?
+  if packages.returncode != 0:
+    _debug('🤕 ALKiP ERROR ALKP0003: Error getting this server\'s currently installed ALKiln version:')
+    _debug(f'Error code: { packages.returncode }')
+    _debug( f"stderr: { packages.stderr.decode("utf-8") }" )
+    server_version = f"Could not get this server's version of ALKiln. ALKilnInThePlayground got an error instead. { da_log_more_info }"
+  
+  else:
+    _debug('Setting server_alkiln_version')
+    _debug(packages.stdout.decode())
+    pattern = re.compile(r'suffolklitlab/alkiln@(\d.*)$')
+    matches = re.search(pattern, packages.stdout.decode())
+    if matches == None:
+      server_version = "Could not get this server's version of ALKiln. It seems to be missing. Install a version of ALKiln to continue."
+    else:
+      server_version = matches.group(1)
+      
+      del matches  # cannot pickle error otherwise
+
+  server_alkiln_version = server_version
+---
+---
+# Defaults
+---
 code: |
   root_path = "/tmp"
+---
+# ##################################
+# Defaulting includes
+# ##################################
+# Contain defaults that need to get precedence
+include:
+  - background_actions_alkip.yml
 ---

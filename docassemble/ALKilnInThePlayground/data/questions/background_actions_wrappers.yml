@@ -1,0 +1,203 @@
+---
+# Abstraction of logic that I commonly wrap around background actions
+# Includes cancel-able actions
+---
+---
+include:
+  - logs.yml
+---
+# Objects' nested DAObject attributes
+generic object: DAObject
+objects:
+  # Values that remain until restarting the task
+  x.ui: DAObject
+  # Values that may get deleted if task fails
+  x.action: DAObject
+---
+# Objects' logic flow
+---
+id: run must-succeed task
+# Example use:
+# 
+# 
+generic object: DAObject
+sets:
+  - x.action.run
+if:
+  not x.action.continue_on_failure
+need:
+  - x.ui.description
+  - logs_more_info
+code: |
+  if x.action.phase in ('before'):
+    x.action.set_state_on_start
+
+  if not x.action.task.ready():
+    x.action.wait
+
+  x.action.end_time
+  # .get() is None with a failed task
+  x.ui.data = x.action.task.get() or {}
+  # Discuss: Where along the way should we join the logs? Too early here?
+  x.ui.logs = '\n'.join( x.ui.data.get('logs', [f'🤕 ALKiP ERROR: The { x.ui.description } background action errored. { logs_more_info }']) )
+
+  # Consider handling `interrupted` and `repeated` here
+
+  if ( x.action.phase != 'failed' and (
+        x.action.task.failed() or not x.ui.data['ok']
+  )):
+    x.action.fail
+  # Discuss: Tell the user about just cancellation, just other failure, or both?
+  if x.ui.canceled or x.ui.failed:
+    # Discuss: Log logs here? Or log upstream after?
+    x.action.undefine
+
+  # Block the `succeed` event from running infinitely
+  # Note: When an event block finishes, da doesn't re-run logic.
+  # If it did, this block would cause a concurrency lock timeout
+  # issue because of the `.succeeded` event causing the main loop
+  # to skip running this block. I think.
+  elif x.action.phase != 'succeeded':
+    x.action.succeed
+
+  x.action.run = True
+---
+id: wraps around task for failable actions
+# Example use:
+# 
+# 
+generic object: DAObject
+sets:
+  - x.action.run
+if:
+  x.action.continue_on_failure
+need:
+  - x.ui.description
+  - logs_more_info
+code: |
+  if x.action.phase in ('before'):
+    x.action.set_state_on_start
+
+  if not x.action.task.ready():
+    x.action.wait
+
+  x.action.end_time
+  # .get() is None with a failed task
+  x.ui.data = x.action.task.get() or {}
+  # TODO: Ensure logs are strings before joining
+  x.ui.logs = '\n'.join( x.ui.data.get('logs', [f'🤕 ALKiP ERROR: The { x.ui.description } background action errored. { logs_more_info }']) )
+
+  # Consider handling `interrupted` and `repeated` here
+
+  if ( x.action.phase != 'failed' and (
+        x.action.task.failed() or not x.ui.data['ok']
+  )):
+    x.action.fail
+  # Discuss: Tell the user about just cancellation, just other failure, or both?
+  if x.ui.canceled or x.ui.failed:
+    # Discuss: Log logs? Or log upstream after?
+    pass
+
+  # Block the `succeed` event from running infinitely
+  # Note: When an event block finishes, da doesn't re-run logic.
+  # If it did, this block would cause a concurrency lock timeout
+  # issue because of the `.succeeded` event causing the main loop
+  # to skip running this block. I think.
+  elif x.action.phase != 'succeeded':
+    x.action.succeed
+
+  x.action.run = True
+---
+---
+# State changes
+---
+event: x.action.set_state_on_start
+generic object: DAObject
+code: |
+  x.ui.canceled = False
+  x.ui.failed = False
+  x.action.phase = 'running'
+  reconsider(x.action.attr_name('start_time'))
+---
+# 📌 This prevents `foo.phase = 'succeeded'` from overpowering `x.phase = ...`
+# To learn about precedence of variable setting, see "Demistifying i and x" youtube video
+event: x.action.succeed
+generic object: DAObject
+code: |
+  x.action.phase = 'succeeded'
+---
+# 📌 This prevents `foo.phase = 'failed'` from overpowering `x.phase = ...`
+# To learn about precedence of variable setting, see "Demistifying i and x" youtube video
+event: x.action.fail
+generic object: DAObject
+code: |
+  x.action.phase = 'failed'
+  x.ui.failed = True
+---
+event: x.action.undefine
+generic object: DAObject
+# ⚠️ AVOID triggering undefined vars in events
+# Possible alternative - `restart` with url args
+code: |
+  undefine(x.action.instanceName)
+  #! Danger! Risk of inifinite loop.
+  re_run_logic()
+---
+---
+# Single-set dynamic values
+---
+id: start time of task
+generic object: DAObject
+code: |
+  x.action.start_time = current_datetime()  # Set once
+---
+id: end time of task
+# TODO: Where is `.end_time` used? Does `.elapsed_time` achieve the same goal?
+generic object: DAObject
+code: |
+  x.action.end_time = current_datetime()  # Set once
+---
+id: elapsed time of task
+reconsider: True
+generic object: DAObject
+code: |
+  # Deliberately explicit about the end time
+  x.elapsed_time = date_difference( ending=current_datetime(), starting=x.action.start_time )
+---
+---
+# Defaults/initial values
+---
+generic object: DAObject
+code: |
+  x.action.did_start = False
+---
+generic object: DAObject
+code: |
+  x.ui.canceled = None
+---
+generic object: DAObject
+code: |
+  x.ui.failed = None
+---
+generic object: DAObject
+code: |
+  x.action.phase = "before"
+---
+generic object: DAObject
+code: |
+  x.ui.logs = None
+---
+generic object: DAObject
+code: |
+  x.action.interrupted = None
+---
+generic object: DAObject
+code: |
+  x.action.task_data = {
+    'ok': False,
+    'logs': [],
+    'repeated': False,
+    'interrupted': False,  # subprocess command was interrupted
+    'result': {},
+  }
+---

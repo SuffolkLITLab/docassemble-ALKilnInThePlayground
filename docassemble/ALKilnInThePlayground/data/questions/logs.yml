@@ -8,7 +8,7 @@ code: |
   def _add_and_log( old_messages, new_messages, where="log" ):
     """
     1. Mutates `old_messages` list by adding truthy `new_messages`
-    2. Logs the truthy messages
+    2. Uses `_log()` with the truthy messages
   
     Args:
       old_messages ([]): List to mutate
@@ -33,7 +33,7 @@ code: |
   def _add_and_debug( old_messages, new_messages, where="console" ):
     """
     1. Mutates `old_messages` list by adding truthy `new_messages`
-    2. Logs the truthy messages if debugging is turned on
+    2. Uses `_debug()` with the truthy messages
   
     Args:
       old_messages ([]): List to mutate
@@ -52,10 +52,13 @@ code: |
       _debug( message, where )
     return old_messages
 ---
+need:
+  - _debug
+  - format_error
 code: |
   def _log( to_log, where='log' ):
     """
-    Logs `to_log` to the desired location and the console. Silences exceptions.
+    Logs `to_log` to the desired location and the console. Silences exceptions. 
 
     Args:
         to_log (str): Message to log.
@@ -66,8 +69,9 @@ code: |
       if where != 'console':
         if debugging:
           log( to_log, 'console' )
-    except Exception:
-      _debug('Why?')
+    except Exception as error_while_logging:
+      _debug('🖊️ ALKiP NOTE: Errored when trying to use _log.')
+      _debug( format_error( error_while_logging ))
       pass
     return to_log
 ---
@@ -89,15 +93,16 @@ code: |
         if where != "console":
           log( repr( to_log ), "console" )
       except:
+        # Try without `repr()`
         try:
           log( to_log, where )
           if where != "console":
             log( to_log, "console" )
         except:
+          # On final attempt, fail silently
           pass
     return to_log
 ---
-# TODO: Replace use of `traceback` with this func
 code: |
   import traceback
   def format_error( error ):
@@ -112,6 +117,7 @@ code: |
     """
     return "\n".join(traceback.format_exception( error ))
 ---
+id: unix timestamp
 code: |
   from datetime import datetime
   def nice_time( timestamp='now' ):
@@ -129,7 +135,35 @@ code: |
       desired_time = datetime.fromtimestamp( timestamp )
     return  desired_time.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 ---
-# Our internal debugging
+id: string of wrapped text
+code: |
+  import textwrap
+  def wrap_text( items, width=45 ):
+    """
+    Returns string or list of strings as one string with new line chars
+      at or before every `width` number of characters.
+
+    Args:
+      items (str|[str]): String or list of strings.
+      width (int): Number of characters at which to wrap.
+
+    Returns:
+      (str): A string with linebreaks at or before every `width` number of
+        characters.
+    """
+    if not items:
+      return items
+    if type(items) != list:
+      items = [ items ]
+
+    all_wrapped = []
+    # For now, avoid fully expanding
+    for one_string in items:
+      all_wrapped.append('\n'.join( textwrap.wrap( one_string, width=45 ) ))
+
+    return '\n'.join( all_wrapped )
+---
+id: detect debugging mode
 reconsider: True
 need:
   - alkiln_config_vars
