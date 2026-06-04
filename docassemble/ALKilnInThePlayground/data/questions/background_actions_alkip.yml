@@ -1,20 +1,29 @@
 ---
 # Our instances of background actions and associated values
-# Discuss: Keep these in the main file
+# Discuss: Keep these in the main file, split into individual files, something else?
+---
+# TODO: Document "order of blocks" practices:
+# Based on order of appearance of dependencies (numbers denote order of appearance in the function):
+# func1
+# func1's dep2 (used only by func1)
+# dep2's dep1 (used only by dep2)
+# dep2's dep2 (used only by dep2)
+# dep3 (used only by func1)
+# func2
+# dep1 (shared by func1 and func 2)
 ---
 include:
   - logs.yml
+  - files.yml
+  - headers.yml
   - background_actions_wrappers.yml
 ---
 # ##################################
 # Sections possible for each background action and wrappers:
 # ##################################
 ---
-# Unique wrapper: Dynamic (action description)
-# Required
----
-# Background action: Logic (action description)
-# Required
+# Unique action: Lifecycle (action description)
+# At least task, action, and failure
 ---
 # Screens (action description)
 # Optional
@@ -42,9 +51,6 @@ include:
 # Wrapper values: Set once (action description)
 # Optional
 ---
-# Shared values: Hard-coded (action description)
-# Optional
----
 # ##################################
 # Objects
 # ##################################
@@ -63,20 +69,12 @@ objects:
 # ##################################
 # Note: no canceling
 ---
-# Unique wrapper: Dynamic (npm connection)
----
-id: try to connect to npm
-need:
-  - npm.action.phase
-code: |
-  if not npm.action.phase in ('failed', 'succeeded', 'canceled'):
-    npm.action.run
+# Unique action: Lifecycle (npm connection)
 ---
 id: npm connection task
 code: |
   npm.action.task = background_action('check_npm_connection')
 ---
-# Background action: Logic (npm connection)
 id: npm connection action
 event: check_npm_connection
 need:
@@ -91,15 +89,15 @@ need:
   - try_to_connect
 code: |
   # ------------- Failure fallback -------------
-  background_error_action("fail_npm_action")
+  background_error_action('fail_npm_action')
 
   # ------------- Default values -------------
-  npm_general_err_log = wrap_text( f"""🤕 ALKiP ERROR: ALKilnInThePlayground ran into an error when it was trying to check the connection to the servers that store ALKiln. Look above for more details and check your { worker_log_link }.""")
+  npm_general_err_log = wrap_text( f'''🤕 ALKiP ERROR: ALKilnInThePlayground ran into an error when it was trying to check the connection to the servers that store ALKiln. Look above for more details and check your { worker_log_link }.''')
 
   # ------------- Guard the action -------------
   if npm.action.did_start:
 
-    _add_and_log( npm.action.task_data['logs'], [ wrap_text( f"""🔎 ALKiP WARNING: Tried to re-run the { npm.ui.description } task. Docassemble was seeking `{ current_context().variable }`. Your { worker_log_link } may have more info.""") ])
+    _add_and_log( npm.action.task_data['logs'], [ wrap_text( f'''🔎 ALKiP WARNING: Tried to re-run the { npm.ui.description } task. Docassemble was seeking `{ current_context().variable }`. Your { worker_log_link } may have more info.''') ])
     npm.action.task_data['ok'] = False
     npm.action.task_data['repeated'] = True
     background_response( npm.action.task_data )
@@ -121,6 +119,28 @@ code: |
   # ------------- Complete fully -------------
   background_response( npm.action.task_data )
 ---
+event: fail_npm_action
+need:
+  - _log
+code: |
+  fail_npm_action_msg = f'''
+  { action_argument('error_type') } { action_argument('error_message') }: { action_argument('error_trace') }
+  Docassemble was looking for these variables:
+  { action_argument('variables') }
+  '''
+  background_response({
+    'ok': False,
+    'repeated': False,
+    'interrupted': False,
+    'logs': [ fail_npm_action_msg ]
+  })
+---
+# TODO: Implement re-check button for authors
+id: re-check npm connection
+event: re_check_npm_connection
+code: |
+  npm.action.undefine
+---
 # Screens (npm connection)
 ---
 # Discuss: Should `.wait` belong to `.ui` or `.action`? Maybe `.ui` should be kept for definitely persistent values. Maybe it should be called `.persistent`
@@ -132,9 +152,9 @@ reload: 5
 question: |
   :plug: One sec, checking the connection to the servers that store ALKiln
 subquestion: |
-  <div class="spinner-container d-flex justify-content-center">
-  <div class="spinner-border" role="status">
-    <span class="visually-hidden">Checking for ALKiln package...</span>
+  <div class='spinner-container d-flex justify-content-center'>
+  <div class='spinner-border' role='status'>
+    <span class='visually-hidden'>Checking for ALKiln package...</span>
   </div>
   </div>
   
@@ -156,7 +176,7 @@ code: |
   import requests
   import traceback
 
-  def try_to_connect(url: str = "https://registry.npmjs.org/", timeout: float = 5.0):
+  def try_to_connect(url: str = 'https://registry.npmjs.org/', timeout: float = 5.0):
     """
     Perform a GET request that times‑out after `timeout` seconds. Return
     dict with info about connection attempts.
@@ -184,8 +204,8 @@ code: |
     try:
       response = requests.get(url, timeout=timeout)
       response.raise_for_status()
-      connection_data["ok"] = response.ok
-      connection_data['pre_logs_msg'] = "ok"
+      connection_data['ok'] = response.ok
+      connection_data['pre_logs_msg'] = 'ok'
   
     except requests.exceptions.ConnectionError as conn_err:
       # Alt: This server isn't connected to the internet or there is some
@@ -234,27 +254,7 @@ code: |
 # None
 ---
 # Wrapper state: Dynamic (npm connection)
----
-event: fail_npm_action
-need:
-  - _log
-code: |
-  fail_npm_action_msg = f"""
-  { action_argument("error_type") } { action_argument("error_message") }: { action_argument("error_trace") }
-  Docassemble was looking for these variables:
-  { action_argument("variables") }
-  """
-  background_response({
-    'ok': False,
-    'repeated': False,
-    'interrupted': False,
-    'logs': [ fail_npm_action_msg ]
-  })
----
-id: re-check npm connection
-event: re_check_npm_connection
-code: |
-  npm.action.undefine
+# TODO: Unnecessary now? Check once we have the other actions
 ---
 # Wrapper state: Defaults (npm connection)
 # None
@@ -276,20 +276,14 @@ code: |
 # Wrapper values: Set once (npm connection)
 # None
 ---
-# Shared values: Hard-coded (npm connection)
-# None
----
 ---
 ---
 # ##################################
 # ALKiln Installation
 # ##################################
 ---
-# Unique wrapper: Dynamic (installing alkiln)
-# Required
----
-# Background action: Logic (installing alkiln)
-# Required
+# Unique action: Lifecycle (installing alkiln)
+# At least task, action, and failure
 ---
 # Screens (installing alkiln)
 # Optional
@@ -304,7 +298,7 @@ code: |
 # Optional
 ---
 # Wrapper state: Dynamic (installing alkiln)
-# At least failure
+# TODO: Unnecessary now? Check once we have the other actions
 ---
 # Wrapper state: Defaults (installing alkiln)
 # Optional
@@ -315,20 +309,14 @@ code: |
 # Wrapper values: Set once (installing alkiln)
 # Optional
 ---
-# Shared values: Hard-coded (installing alkiln)
-# Optional
----
 ---
 ---
 # ##################################
 # ALKiln tests (test run)
 # ##################################
 ---
-# Unique wrapper: Dynamic (test run)
-# Required
----
-# Background action: Logic (test run)
-# Required
+# Unique action: Lifecycle (test run)
+# At least task, action, and failure
 ---
 # Screens (test run)
 # Optional
@@ -343,7 +331,7 @@ code: |
 # Optional
 ---
 # Wrapper state: Dynamic (test run)
-# At least failure
+# TODO: Unnecessary now? Check once we have the other actions
 ---
 # Wrapper state: Defaults (test run)
 # Optional
@@ -354,45 +342,698 @@ code: |
 # Wrapper values: Set once (test run)
 # Optional
 ---
-# Shared values: Hard-coded (test run)
-# Optional
----
 ---
 ---
 # ##################################
 # Test run artifacts
 # ##################################
+# Discuss: This might need its own file.
+# Note: No canceling, no re-run
 ---
-# Unique wrapper: Dynamic (artifacts)
-# Required
+# Unique action: Lifecycle (artifacts)
 ---
-# Background action: Logic (artifacts)
-# Required
+code: |
+  artifacts.action.task = background_action('get_artifacts_html')
+---
+event: get_artifacts_html
+need:
+  - folder_path
+  - _debug
+  - _add_and_log
+  - format_error
+  - worker_log_link
+  - artifacts.action.did_start
+  - artifacts.action.task_data
+  - artifacts.ui.description
+  - get_files_html
+code: |
+  # ------------- Failure fallback -------------
+  background_error_action('fail_artifacts_action')
+
+  # ------------- Default values -------------
+  arts_general_err_log = f'''🤕 ALKiP ERROR: ALKilnInThePlayground ran into an error when
+  it was trying to get the test artifacts. Look above for more details and
+  check your { worker_log_link }.'''
+
+  artifacts.action.task_data['result'] = {}
+
+  # ------------- Guard the action -------------
+  if artifacts.action.did_start:
+  
+    _add_and_log( artifacts.action.task_data['logs'], [f'''🔎 ALKiP WARNING: Tried to re-run the ALKiln { artifacts.ui.description } task. Docassemble was seeking `{ current_context().variable }`. Your { worker_log_link } may have more info.'''])
+    artifacts.action.task_data['ok'] = False
+    artifacts.action.task_data['repeated'] = True
+    background_response( artifacts.action.task_data )
+  
+  artifacts.action.did_start = True
+
+  # ------------- Run -------------
+  try:
+    if folder_path == None:
+      artifacts.action.task_data['result'] = {
+        'html': '',
+        'outcome': None,
+        'file_problem': True,
+      }
+    else:
+      tests_data = get_files_html( folder_path )
+      artifacts.action.task_data['result'] = {
+        'html': tests_data['html'],
+        'outcome': tests_data['outcome'],
+        'file_problem': False,
+      }
+    artifacts.action.task_data['ok'] = True
+  
+  except Exception as artifacts_func_err:
+    _add_and_log( artifacts.action.task_data['logs'], [ format_error( artifacts_func_err ), arts_general_err_log ])
+    artifacts.action.task_data['ok'] = False
+
+  # ------------- Complete fully -------------
+  background_response( artifacts.action.task_data )
+---
+event: fail_artifacts_action
+code: |
+  fail_artifacts_action_msg = f'''
+  { action_argument('error_type') } { action_argument('error_message') }: { action_argument('error_trace') }
+  Docassemble was looking for these variables:
+  { action_argument('variables') }
+  '''
+  log( fail_artifacts_action_msg )
+  background_response({
+    'ok': False,
+    'repeated': False,
+    'interrupted': False,
+    'result': {},
+    'logs': [ fail_artifacts_action_msg ]
+  })
 ---
 # Screens (artifacts)
-# Optional
+---
+id: artifacts html wait screen
+event: artifacts.action.wait
+prevent going back: True
+reload: 5
+question: |
+  :folder-open: Stand by, building the test run artifacts
+subquestion: |
+  <div class='spinner-container d-flex justify-content-center'>
+  <div class='spinner-border' role='status'>
+    <span class='visually-hidden'>Building artifacts...</span>
+  </div>
+  </div>
+  
+  The amount of time this takes depends on how many tests ran. It should finish someday, though.
+
+  :clock: **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=artifacts.action.start_time ).delta) }**[BR]
+  (Updates about every 5 seconds depending on your server speed)
 ---
 # Action-needed values: Dynamic (artifacts)
-# Optional
+---
+# An experiment in reducing the number of functions we use
+objects:
+  - sections: DAList.using( object_type=DAObject, complete_attribute='header' )
+---
+need:
+  - folder_path
+code: |
+  if folder_path == None:
+    files_html = ''
+    test_run_outcome = None
+    file_problem = True
+  else:
+    tests_data = get_files_html( folder_path )
+    files_html = tests_data['html']
+    test_run_outcome = tests_data['outcome']
+    file_problem = False
+  run_get_files_html = True
+---
+code: |
+  file_problem = False
+---
+need:
+  - _debug  # shared
+  - get_top_buttons  # internal
+  - get_generated_Scenarios_section  # internal
+  - get_quick_view_header  # internal
+  - get_file_html  # internal
+  - no_tests_instructions  # internal
+  - get_scenarios_header  # internal
+code: |
+  import os
+  
+  def get_files_html( local_folder_path ):
+    """
+    Return html to show artifacts files and artifacts zip. Discuss: The args
+        may be unnecessary complications.
+
+    Args:
+        local_folder_path (str): path of the artifacts folder
+
+    Returns:
+        dict: Props:
+        - html (str or None): HTML of the files section or None
+        - outcome (str or None): 'failed', 'unexpected', 'passed' or None
+    """
+
+    local_test_run_outcome = None
+  
+    if local_folder_path is None:
+      return {'html': '', 'outcome': None}
+
+    html = get_top_buttons()
+    
+    # collect top-level names and paths.
+    top_dirs = []
+    top_files = []
+    top_other = []
+    # A bit faster than other methods, though that doesn't matter much here so far. https://stackoverflow.com/a/62478211/14144258
+    with os.scandir( local_folder_path ) as scan:
+      for dir_item in scan:
+        _debug(f'💡 ALKiP INFO: Scanning { local_folder_path }/{ dir_item.name }')
+        if dir_item.is_file():
+          top_files.append(dir_item)
+        elif dir_item.is_dir():
+          top_dirs.append(dir_item)
+        else:
+          top_other.append(dir_item)
+  
+    # ====== 'Root' level directories ======
+    top_dirs.sort(key=lambda dir: dir.name)
+  
+    # ====== Add all generated tests ======
+    # There should be only one directory, but this looks clean
+    generation_dir_exists = False
+    generation_dirs = [ dir for dir in top_dirs if '_alkiln_generated' in dir.name ]
+    for dir in generation_dirs:
+      generation_dir_exists = True
+      html += get_generated_Scenarios_section( dir )
+
+    # ====== 'Root' level files section ======
+  
+    html += f'''
+      <section id='quick_view' class='section quick_view'>
+        { get_quick_view_header() }
+        <aside>Top-level reports, error screenshots, etc.</aside>
+        <div class='output card card-body'>
+        '''
+
+    # Show files that are for the all the tests combined
+    # This includes error screenshots
+    summary_images_html = ''
+    summary_other_files_html = ''
+    report_html = ''
+    summary_files_exist = False
+    top_files.sort(key=lambda file: file.name)
+  
+    for file in top_files:
+      file_html = get_file_html(name=file.name, path=file.path)
+
+      # Non-summary files
+      # Discuss: should these be summary files too? Should 'debug_log' be listed if
+      # 'report' is missing?
+      if file.name == 'debug_log.txt':
+        local_test_run_outcome = 'unexpected'
+        try:
+          with open(file.path, 'r') as report:
+            content = report.read()
+          if 'ALK0099' in content:
+            local_test_run_outcome = 'failed'
+          elif 'ALK0055' in content:
+            local_test_run_outcome = 'unexpected'
+          elif 'ALK0054' in content:
+            local_test_run_outcome = 'passed'
+        except Exception as debug_log_open_err:
+          import traceback
+          _debug(f'🖊️ ALKiln NOTE: No debug_log.txt file.')
+          _debug('\n'.join( traceback.format_exception( debug_log_open_err ) ))
+      elif file.name == 'temp_unexpected_results_debug_log.txt':
+        # Always skip this file. Don't worry, unexpected_results.txt gets added along with
+        # the rest of the files
+        continue
+
+      # Summary files
+      else:
+        summary_files_exist = True
+        if file.name.endswith('.jpg'):
+          summary_images_html += file_html
+        elif file.name == 'report.txt':
+          report_html = file_html
+        else:
+          summary_other_files_html += file_html
+
+    if summary_files_exist:
+      html += f'''
+          <ul class='text_files'>
+            {report_html}
+            {summary_other_files_html}
+          </ul>
+          '''
+      if summary_images_html != '':
+        html += f'''
+          <hr>
+          <ul class='images'>
+            {summary_images_html}
+          </ul>
+          '''
+    else:
+      html += str( no_tests_instructions )
+    
+    # End summary files items
+    html += '</div>\n'
+    # End summary files section
+    html += '</section>\n'
+
+    # ====== Nested dirs output ======
+  
+    # ====== Start all Scenarios ======
+    html += '''<section class='section scenarios'>\n'''
+    html += get_scenarios_header()
+  
+    if ( len(top_dirs) <= 0
+        or ( generation_dir_exists and len(top_dirs) <= 1 )):
+      _debug('🖊️ ALKiP NOTE: 0 `top_dir`s found')
+      html += '''
+        <div class='output card card-body scenario'>
+          <div class='no_output'>ALKiln found no Scenario files.</div>
+        </div>
+      '''
+
+    # For each Scenario
+    for dir in top_dirs:
+
+      if '_alkiln_generated' in dir.name:
+        continue
+  
+      html += '''<div class='output card card-body scenario'>\n'''
+      html += f'<h3>Scenario: {dir.name}</h3>\n'
+      
+      # Get the files in that Scenario
+      for sc_files_root_path, dir_names, file_names in os.walk(f'{dir.path}'):
+        file_names.sort()
+        
+        # Discuss: organize files by type: report, error, screenshots, downloaded. Maybe by timestamp instead of by name?
+        text_files_html = ''
+        images_html = ''
+        templates_html = ''
+        other_files_html = ''
+
+        if len(file_names) == 0:
+          html += '''<div class='no_files'>ALKiln stored 0 artifact files for this Scenario.</div>'''
+        
+        for file_name in file_names:
+          abs_path = os.path.abspath(os.path.join(sc_files_root_path, file_name))
+          file_html = get_file_html(name=file_name, path=abs_path)
+          if file_name.endswith('.txt'):
+            text_files_html += file_html
+          elif file_name.endswith('.jpg'):
+            # Discuss: carrousel for error screenshots section?
+            # Discuss: sym link to images instead of duplicate?
+            images_html += file_html
+          elif file_name.endswith('.pdf') or file_name.endswith('.docx'):
+            # TODO: need more flexibility for other types of downloaded files
+            templates_html += file_html
+          else:
+            # Not sure what these'll be
+            other_files_html += file_html
+
+        if text_files_html != '':
+          html += f'''<ul class='text_files'>\n{text_files_html}\n</ul>\n'''
+        # Downloaded pdfs and docxs
+        if templates_html != '':
+          html += '<hr>\n'
+          html += f'''<ul class='templates'>\n{ templates_html }\n</ul>\n'''
+        if images_html != '':
+          html += '<hr>\n'
+          # Ordered list because timing creates an order that does matter. Moreso once we have story table screenshots
+          html += f'''<ol class='images'>\n{ images_html }\n</ol>\n'''
+        if other_files_html != '':
+          html += '<hr>\n'
+          html += f'''<ul class='other_files'>\n{other_files_html}\n</ul>\n'''
+      # Ends one Scenario
+      html += '</div>\n'
+      
+    # End all Scenarios
+    html += '</section>\n'
+    
+    return { 'html': html, 'outcome': local_test_run_outcome }
+---
+id: top buttons
+need:
+  - make_and_get_artifacts_zip_downloader  # internal
+code: |
+  import subprocess
+  
+  def get_top_buttons():
+    """
+    Returns:
+      str: the top-most functional buttons HTML for the results page
+    """
+    zip_html = make_and_get_artifacts_zip_downloader()
+
+    html = f'''
+      <section class='section top_buttons'>
+        <div class='quick_buttons top'>
+          { zip_html }
+  
+          <nav class='to_console_logs_from_top'>
+            <a class='non_da_internal_link btn btn-secondary' href='#console' markdown='1' type='button'><i class='fa-solid fa-arrows-down-to-line'></i> Jump down to the full console logs</a>
+          </nav>
+
+        </div>
+      </section>
+    '''
+
+    return html
+---
+id: zip section
+need:
+  # All dependencies are shared by other functionality  # internal
+  - da_log_more_info
+  - root_path
+  - folder_path
+  - folder_name
+  - zip_name_no_ext
+  - zip_name
+  - get_zip_path
+code: |
+  import subprocess
+  
+  def make_and_get_artifacts_zip_downloader():
+    """
+    Returns:
+        str: the zip download button HTML for the artifacts folder
+    """
+
+    zip_not_found_html = f'''
+        <div class='alkiln_error alert alert-warning'>ALKilnInThePlayground was unable to create a zip file for the test artifacts. Sorry about that. You might find more clues on this page. { da_log_more_info }</div>\n
+      '''
+
+    if zip_name == None:
+      return zip_not_found_html
+
+    _debug(f'💡 ALKiP INFO: will try to get the artifacts zip from "{ folder_path }" (in "{ root_path }") and save the artifacts zip with the name "{ zip_name }".' )
+
+    # TODO: Remove zip_name_no_ext if possible. `zip` cmd doesn't need it.
+
+    zipping_did_error = False
+    try:
+  
+      # cwd controls where the expanded zip's path starts. Every folder beyond
+      # the cwd location will show up in the output of expanding the zip.
+      # zip_name_no_ext ex: 'the_zip'
+      # folder_path ex: '/tmp/the_folder'
+      zip_process = subprocess.run(['zip', '-rv', zip_name_no_ext, folder_name ], cwd=root_path, check=False, capture_output=True)
+
+      # Folder path was fine, but unable to make zip
+      if zip_process.returncode != 0:
+        zipping_did_error = True
+        returncode = zip_process.returncode
+
+        if returncode == 12:
+          _log( f'🤕 ALKiP ERROR: when trying to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }", the zip command was unable to find the file or directory. Return code "{ zip_process.returncode }" ("zip has nothing to do").' )
+        elif returncode == 15:
+          _log( f'🤕 ALKiP ERROR: when trying to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }", the zip command was unable to create a file to write to. Return code "{ zip_process.returncode }".' )
+  
+        else:
+          _log( f'🤕 ALKiP ERROR ALKP0007: error running `zip` command to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }" with return code "{ zip_process.returncode }". stderr:' )
+          _log( zip_process.stderr.decode( 'utf-8' ))
+
+    except FileNotFoundError as zip_process_error:
+      zipping_did_error = True
+      _log( f'🔎 ALKiP WARNING: could not find the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
+      import traceback
+      _log('\n'.join( traceback.format_exception( zip_process_error ) ))
+      
+    except Exception as zip_process_error:
+      zipping_did_error = True
+      _log( f'🤕 ALKiP ERROR: subprocess errored when ALKilnInThePlayground tried to zip the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
+      import traceback
+      _log('\n'.join( traceback.format_exception( zip_process_error ) ))
+
+    if zipping_did_error:
+      return zip_not_found_html
+  
+    zip_path = get_zip_path()['path']
+  
+    if zip_process.stdout:
+      _debug(f'💡 ALKiP INFO: saved the artifacts zip file correctly to "{ zip_path }". stdout:')
+      _debug( zip_process.stdout )
+
+    zip_da_file = DAFile()
+    zip_da_file.initialize( filename=zip_name )
+    zip_da_file.copy_into( zip_path )
+    zip_da_file.commit()
+  
+    return f'''
+        <menu>{ action_button_html( zip_da_file.url_for(), label='Download all files and folders that ALKiln created', color='primary', size='md', icon='file-zipper', new_window=True, classname='zip') }</menu>
+    '''
+---
+id: html section for generated randomized Scenarios
+# Discuss: Would it be useful to create a generated files zip when
+# we already have the whole artifacts zip?
+need:
+  - sections  # internal
+  - sticky_h2_header  # internal
+  - get_feature_html  # internal
+code: |
+  import os
+  import shutil
+  import json
+  
+  def get_generated_Scenarios_section( dir ):
+    """
+    Return the HTML for the list of generated files or a missing files msg.
+
+    Args:
+        dir (str): The dir that holds the new .feature files
+
+    Returns:
+        str: the HTML for the list of generated files or a missing files msg.
+    """
+    gen = sections[ sections.number_gathered() ]
+
+    # Discuss: Add 'expand all' button?
+    gen.heading = 'Files containing new randomized tests'
+    gen.id = 'generated_scenarios'
+  
+    html = f'''
+    <section id='generated' class='section generated'>
+      { sticky_h2_header( gen ) }
+      <div class='accordion output generated'>
+    '''
+
+    # Will the ALKiln timestamps and counter be unique enough? Probably.
+    # If we generate files in parallel we'll have to check again.
+    for gen_root_path, dir_names, file_names in os.walk(f'{ dir.path }'):
+      file_names.sort()
+      num_files = len( file_names )
+      for name_i in range( 0, num_files ):
+        file_name = file_names[ name_i ]
+        path = os.path.abspath(os.path.join(gen_root_path, file_name))
+        z_index = num_files - name_i
+        html += get_feature_html( path, file_name, z_index )
+  
+    html += '</div>\n'  # ends generated accordions
+    html += '</section>\n'  # ends generated section
+
+    return html
+---
+id: html for one generated feature file
+need:
+  - sections  # internal
+  - very_safe_name  # shared
+  - copier  # shared
+  - download_file_button  # shared
+  - menu_download_n_copy  # shared
+  - sticky_accordion_header  # internal
+  - accordion_content_for_file  # internal
+code: |
+  import os
+    
+  def get_feature_html( path, file_name, z_index ):
+    """
+    Return the HTML for one generated feature file
+  
+    Note: Code style is based on a future goal to remove functions
+
+    Args:
+        path (str): path to the feature file
+        file_name (str): name of the feature file
+  
+    Returns:
+        str: HTML for one generated feature file
+    """
+  
+    feat = sections[ sections.number_gathered() ]
+    feat.heading = file_name
+    feat.id = very_safe_name( file_name )
+
+    feat.da_file = DAFile()
+    feat.da_file.initialize( filename=f'{ feat.id }.feature' )
+    feat.da_file.copy_into( path )
+    feat.da_file.commit()
+
+    feat.download = download_file_button( feat.da_file.url_for() )
+    feat.copier = copier
+    feat.menu = menu_download_n_copy( feat )
+  
+    html = f'''
+    <section class='accordion-item feature_files alkiln_copy' style='z-index: { z_index }'>
+      { sticky_accordion_header( feat ) }
+      { accordion_content_for_file( feat ) }
+    </section>
+    '''
+
+    return html
+---
+id: accordion content for a copyable file
+# Discuss: Make an accordion.yml?
+code: |
+  def accordion_content_for_file( accorder ):
+    """
+    Args:
+        accorder (DAObject): Data for the desired element.
+          id (str): id of the outer HTML element.
+          da_file (DAFile): The file to get the text from.
+  
+    Returns:
+        str: HTML for a Bootstrap accordion contents with copyable text
+    """
+    return f'''<div id='{ accorder.id }' class='accordion-collapse collapse' aria-labelledby='{ accorder.id }'>
+      <pre class='accordion-body visible_text'>{ accorder.da_file.slurp(auto_decode=False).decode('utf-8') }</pre>
+    </div>'''
+---
+id: html header for root-level files
+need:
+  - sections  # internal
+  - sticky_h2_header  # internal
+code: |
+  def get_quick_view_header():
+    """
+    Returns:
+        str: the HTML for the header of the 'root' level files section.
+    """
+    quick = sections[ sections.number_gathered() ]
+    quick.heading = 'Results quick view'
+    quick.id = 'quick_view_header'
+    return sticky_h2_header( quick )
+---
+id: non-feature files
+# TODO: do something safer with uncategorized files
+need:
+  - space_to_underscore  # DA func. Remove this?
+code: |
+  def get_file_html(name='', path=''):
+    """
+    Args:
+        name (str): Name of the file.
+        path (str): Path to the file.
+
+    Returns:
+        str: HTML for one file
+    """
+    # Show a DAFile for each file
+    da_file = DAFile()
+    da_file.initialize(filename=f'{space_to_underscore(name)}')
+    da_file.copy_into( path )
+    da_file.commit()
+    
+    if name.endswith('.txt'):
+      html = f'''<li class='text_file'>
+      <a target='_blank' href='{da_file.url_for()}'>{ name } <i class='fas fa-external-link'></i></a>)
+    </li>
+    '''
+    else:
+      # Assumes a file that can be shown with a thumbnail image
+      da_file.set_alt_text(f'The thumbnail image for { name }.')
+      html = f'''<li class='thumbnail'>
+        <span><span>{ name }</span> (<a target='_blank' href='{ da_file.url_for() }'>tap to see file <i class='fas fa-external-link'></i></a>)</span>
+        <div><a target='_blank' href='{ da_file.url_for() }'>{ da_file }</a></div>
+      </li>
+    '''
+    
+    return html
+---
+id: html elements to copy to clipboard
+code: |
+  copier = '''<div class='copy_functionality functional_button_container'>
+    <!-- Can't control textarea styles, esp word-wrap -->
+    <textarea readonly aria-hidden='true' class='to_copy'></textarea>
+  
+    <button class='btn btn-secondary copy_button' type='button'>
+      <i class='far fa-copy'></i>
+      <div class='statuses'>
+        <span class='copy_default'>Copy</span>
+        <span class='copy_done'>Copied!</span>
+        <span class='copy_cancelled'>Cancelled copy</span>
+      </div>
+    </button>
+  </div>'''
+---
+id: html header for ouputs of Scenarios
+# TODO: Move into headers.yml
+need:
+  - sections  # shared
+  - sticky_h2_header  # included
+code: |
+  def get_scenarios_header():
+    """
+    Returns:
+        str: the HTML for the header of the Scenarios outputs section.
+    """
+    scenarios = sections[ sections.number_gathered() ]
+    scenarios.heading = 'Scenarios'
+    scenarios.id = 'scenarios_header'
+    return sticky_h2_header( scenarios )
 ---
 # Action-needed values: Defaults (artifacts)
 # Optional
 ---
 # Action-needed values: Hard-coded (artifacts)
-# Optional
+---
+id: no tests instructions
+template: no_tests_instructions
+need:
+  - logs_more_info
+content: |
+  <div class=''no_output prose'>
+    <p>ALKiln found no summary files (like report.txt). Maybe no tests ran. Here are some questions that might help find the problem.</p>
+    <p>Does <a class='non_da_internal_link' href='#console'>the console output at the bottom of this page</a> show that the tests ran "0 scenarios"? If so:</p>
+    <ul>
+      <li>Does <a class='non_da_internal_link' href='#console'>that console output</a> show that ALKiln ran into an error before it could run any of your tests? If so, read those error messages and any in your logs.</li>
+      <li>Does your Sources folder contain files ending in ".feature"? If not, your package has no tests to run.</li>
+      <li>Look at <a class='non_da_internal_link' href='#metadata'>the top of this page at the value of "Tag expression"</a>.
+        <ul>
+          <li>Do you have a typo in your tag expression?</li>
+          <li>Does your tag expression have <a href='https://assemblyline.suffolklitlab.org/docs/components/ALKiln/writing/#tags:~:text=2%20and%203-,not%20%40wild_bear,-All%20tests%20in'>the word `not` in it</a>? That tells ALKiln to skip some tests.</li>
+          <li>Does your <a target='_blank' href='${url_of('root', _external=True)}/config'>your docassemble server config</a> set <a href='https://assemblyline.suffolklitlab.org/docs/components/ALKiln/writing/#github-optional-inputs:~:text=ALKILN_TAG_EXPRESSION%20is%20the%20%22tag%20expression%22%20to%20use%20to%20limit%20which%20tests%20to%20run'>the ALKiln environment variable <code>ALKILN_TAG_EXPRESSION</code></a>? If you need to override it you can write a new one in the tag expression field just before you run these tests.</li>
+        </ul>
+      </li>
+    </ul>
+    <p>${ logs_more_info }</p>
+  </div>
+---
 ---
 # Wrapper state: Dynamic (artifacts)
-# At least failure
+# TODO: Unnecessary now? Check once we have the other actions
 ---
 # Wrapper state: Defaults (artifacts)
 # Optional
 ---
 # Wrapper values: Hard-coded (artifacts)
-# Required
+---
+id: artifacts html task description
+code: |
+  artifacts.ui.description = 'tests artifacts html'
+---
+id: artifacts html can continue on failure
+code: |
+  artifacts.action.continue_on_failure = True
+---
+id: unnecessary cancel key for artifacts html task
+code: |
+  artifacts.action.cancel_key = 'cancel_artifacts_unnecessary'
 ---
 # Wrapper values: Set once (artifacts)
-# Optional
----
-# Shared values: Hard-coded (artifacts)
 # Optional
 ---

@@ -129,10 +129,16 @@ code: |
   
   if setup_errored:
     _debug( "One of the setup steps errored" )
-    # If we expect ALKiln to have the necessary scripts then
-    # show the error on final screen
-    # (Note: We delete the original files after showing the output
-    # screen)
+    # TODO: If we expect ALKiln to have the necessary scripts
+    # then show the error on final screen
+    # TODO: The below is used twide. Abstract it.
+    if not artifacts.action.phase in ('failed', 'succeeded', 'cancelled'):
+      artifacts.action.run
+  
+    files_html = artifacts.ui.data.get('result', {}).get('html', '')
+    test_run_outcome = artifacts.ui.data.get('result', {}).get('outcome', None)
+    file_problem = artifacts.ui.data.get('result', {}).get('file_problem', True)
+    remove_tmp_files
     show_output  # terminating screen
 
   _debug(f"ran_tests: { ran_tests }")
@@ -146,13 +152,18 @@ code: |
     if stopped_early or test_run_output.ready():
       _debug(f"stopped_early: { stopped_early }")
       run_get_files_html
-      # Note: we remove the original files after showing the output screen
       ran_tests = True
-      show_output
     else:
       waiting_screen
+  if not artifacts.action.phase in ('failed', 'succeeded', 'cancelled'):
+    artifacts.action.run
+  
+  files_html = artifacts.ui.data.get('result', {}).get('html', '')
+  test_run_outcome = artifacts.ui.data.get('result', {}).get('outcome', None)
+  file_problem = artifacts.ui.data.get('result', {}).get('file_problem', True)
+  remove_tmp_files
 
-  show_output
+  show_output  # terminating screen
 ---
 code: |
   ran_tests = False # Default
@@ -350,14 +361,14 @@ validation code: |
 # TODO: Switch to console copy functionality when we implement that. Include text conversion to preserve links, etc.
 id: pick which task, with offline and no alkiln installed
 event: ask_version
-if: |
-  not npm.ui.data.get('ok', False) and ('Could not get' in get_installed_version() or invalid_install)
 need:
   - npm.ui.data
   - get_installed_version
   - invalid_install
   - link_start_regex
   - link_end_regex
+if: |
+  not npm.ui.data.get('ok', False) and ('Could not get' in get_installed_version() or invalid_install)
 question: |
   Unable to install ALKiln
 subquestion: |
@@ -385,12 +396,12 @@ code: |
 # TODO: (For the future) Don't need `if` around news request I think. Double check.
 # Discuss: Add explicit refresh button
 id: which task but with prexisting version
-if: |
-  not 'Could not get' in get_installed_version() and not invalid_install
 need:
   - npm.ui.data
   - invalid_install
   - get_installed_version
+if: |
+  not 'Could not get' in get_installed_version() and not invalid_install
 question: |
   ALKiln version
 subquestion: |
@@ -2480,8 +2491,9 @@ code: |
 code: |
   root_path = "/tmp"
 ---
+---
 # ##################################
-# Defaulting includes
+# `include`s with defaults
 # ##################################
 # Contain defaults that need to get precedence
 include:
