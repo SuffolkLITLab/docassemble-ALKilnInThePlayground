@@ -1,3 +1,4 @@
+# Discuss: Make names.yml for safe names, timestamps, etc? strings.yml? special_strings.yml?
 # TODO: When offline, skip the install ALKiln page (except when they have no ALKiln installed). Leave button on other pages to install another version, but pressing that button should somehow show the user that they can't install a different ALKiln version when they're offline.
 # TODO: Reduce number of functions into plain blocks or events. Incidentally, that will allow avoiding the complex return value for getting the html.
 # TODO: Add codes to log messages.
@@ -28,11 +29,12 @@ metadata:
     See guides for writing tests in the [ALKiln documentation](https://assemblyline.suffolklitlab.org/docs/alkiln/writing/).
 ---
 include:
+  - logs.yml
+  - files.yml
   - artifacts.yml
   - validate.yml
   - generate.yml
   - headers.yml
-  - logs.yml
 ---
 features:
   css:
@@ -1915,7 +1917,7 @@ code: |
       <div class="statuses">
         <span class="copy_default">Copy</span>
         <span class="copy_done">Copied!</span>
-        <span class="copy_cancelled">Cancelled copy</span>
+        <span class="copy_canceled">Canceled copy</span>
       </div>
     </button>
   </div>"""
@@ -2484,8 +2486,65 @@ code: |
     cmd_exists = os.path.isfile(f"/var/www/.npm-global/bin/{ bin_name }")
     return cmd_exists
 ---
+# ##################################
+# Dynamic
+# ##################################
 ---
-# Default
+# WARNING: Doing this with a function takes waaaay longer
+# TODO: Move this block further up
+# Discuss: Should `if matches == None:` be an error path instead?
+id: set the version number of alkiln
+need:
+  - da_log_more_info
+  - _debug
+  - nice_time
+code: |
+  import subprocess
+  import re
+
+  """
+  Sets string to print for the version number or an error message with
+      'Could not get'.
+      Discuss: a better way to fail. Separate the error messages from the
+      failure itself.
+
+  Sets:
+      str: The version number or an error to show the user.
+  """
+  # https://stackoverflow.com/a/13332300
+  # npm list -g --prefix /var/www/.npm-global --depth 0 -p -l
+  packages = subprocess.run(['npm', 'list', '@suffolklitlab/alkiln', '-g', '--prefix', '/var/www/.npm-global', '--depth', '0', '-p', '-l'], check=False, capture_output=True)
+  # What would cause an error here?
+  if packages.returncode != 0:
+    _debug('🤕 ALKiP ERROR ALKP0003: Error getting this server\'s currently installed ALKiln version:')
+    _debug(f'Error code: { packages.returncode }')
+    _debug( f"stderr: { packages.stderr.decode("utf-8") }" )
+    server_version = f"Could not get this server's version of ALKiln. ALKilnInThePlayground got an error instead. { da_log_more_info }"
+  
+  else:
+    _debug('Setting server_alkiln_version')
+    _debug(packages.stdout.decode())
+    pattern = re.compile(r'suffolklitlab/alkiln@(\d.*)$')
+    matches = re.search(pattern, packages.stdout.decode())
+    if matches == None:
+      server_version = "Could not get this server's version of ALKiln. It seems to be missing. Install a version of ALKiln to continue."
+    else:
+      server_version = matches.group(1)
+      
+      del matches  # cannot pickle error otherwise
+
+  server_alkiln_version = server_version
+---
+---
+# Defaults
 code: |
   root_path = "/tmp"
+---
+---
+# ##################################
+# Defaulting includes
+# ##################################
+# Contain defaults that need to get precedence
+include:
+  - background_actions_alkip.yml
 ---

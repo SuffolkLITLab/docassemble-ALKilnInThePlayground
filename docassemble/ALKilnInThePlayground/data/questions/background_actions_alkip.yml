@@ -1,0 +1,825 @@
+---
+# Our instances of background actions and associated values
+# Discuss: Keep this in the main file
+---
+include:
+  - logs.yml
+  - files.yml
+  - process_helpers.yml
+  - background_actions_wrappers.yml
+---
+# ##################################
+# Objects
+# ##################################
+---
+objects:
+  install: DAObject
+  tests: DAObject
+  artifacts: DAObject
+  npm: DAObject
+  generation: DAObject
+---
+# ##################################
+# Sections needed for each background action and wrappers:
+# ##################################
+---
+# Unique wrapper: Dynamic (action description)
+# Required
+---
+# Background action: Logic (action description)
+# Required
+---
+# Screens (action description)
+# None
+# Discuss: Should some or all screens be in a different file?
+---
+# Action-needed values: Dynamic (action description)
+# At least failure
+---
+# Action-needed values: Defaults (action description)
+# None
+---
+# Action-needed values: Hard-coded (action description)
+# None
+---
+# Wrapper state: Dynamic (action description)
+---
+# Wrapper state: Defaults (action description)
+# None
+---
+# Wrapper values: Hard-coded (action description)
+# Required
+---
+# Wrapper values: Set once (action description)
+# None
+---
+# Shared values: Hard-coded (action description)
+# None
+---
+---
+---
+# ##################################
+# NPM connection
+# ##################################
+# Note: no canceling
+# TODO: first in line for implementation
+---
+# Unique wrapper: Dynamic (npm connection)
+---
+id: try to connect to npm
+need:
+  - try_to_connect
+  - npm.action.phase
+code: |
+  if not npm.action.phase in ('failed', 'succeeded', 'canceled'):
+    npm.action.run
+  # Discuss: Is showifdef() a useful pattern? Use elsewhere too?
+  npm_connection_msg = showifdef(npm.ui.attr_name('logs'), None)
+---
+id: npm connection task
+code: |
+  npm.action.task = background_action('check_npm_connection')
+---
+# Background action: Logic (npm connection)
+id: npm connection action
+event: check_npm_connection
+need:
+  - _add_and_log
+  - worker_log_link
+  - npm.action.did_start
+  - npm.action.task_data
+  - npm.ui.description
+  - try_to_connect
+code: |
+  # ------------- Failure fallback -------------
+  background_error_action("fail_npm_action")
+
+  # ------------- Default values -------------
+  npm_general_err_log = f"""🤕 ALKiP ERROR: ALKilnInThePlayground ran into an error when
+  it was trying to check the connection to the servers that
+  store ALKiln. Look above for more details and
+  check your { worker_log_link }."""
+
+  # ------------- Guard the action -------------
+  if npm.action.did_start:
+  
+    _add_and_log( npm.action.task_data['logs'], [f"""🔎 ALKiP WARNING: Tried to re-run the { npm.ui.description } task. Docassemble was seeking `{ current_context().variable }`. Your { worker_log_link } may have more info."""])
+    npm.action.task_data['ok'] = False
+    npm.action.task_data['repeated'] = True
+    background_response( npm.action.task_data )
+  
+  npm.action.did_start = True
+
+  # ------------- Run -------------
+  try:
+    npm_connection_msg = try_to_connect()
+    npm.action.task_data['logs'].append( npm_connection_msg )
+    npm.action.task_data['ok'] = npm_connection_msg == 'ok'
+  
+  except Exception as npm_connection_attempt_error:
+    _add_and_log( npm.action.task_data['logs'], npm_connection_attempt_error )
+    npm.action.task_data['ok'] = False
+
+  # ------------- Complete fully -------------
+  background_response( npm.action.task_data )
+---
+# Screens (npm connection)
+---
+id: npm html wait screen
+event: npm.action.wait
+prevent going back: True
+reload: 5
+question: |
+  :plug: One sec, checking the connection to the servers that store ALKiln
+subquestion: |
+  <div class="spinner-container d-flex justify-content-center">
+  <div class="spinner-border" role="status">
+    <span class="visually-hidden">Checking for ALKiln package...</span>
+  </div>
+  </div>
+  
+  This is supposed to take no more than about 15 seconds.
+
+  In future, ALKiln developers plan to change the order of these operations so that you will have the option to go straight to running your tests.
+
+  :clock: **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=npm.action.start_time ).delta) }**[BR]
+  (Updates about every 5 seconds depending on your server speed)
+---
+# Action-needed values: Dynamic (npm connection)
+---
+id: check npm connection works
+need:
+  - _log
+code: |
+  import requests
+  import traceback
+
+  # TODO: try using npm ping
+  def try_to_connect(url: str = "https://registry.npmjs.org/", timeout: float = 5.0):
+    """
+    Perform a GET request that times‑out after `timeout` seconds. Return
+    message about connection attempts.
+    Log requests.HTTPError for 4xx/5xx status codes.
+
+    TODO: Separate the visual connection message from the connection message
+    logs since we seem to want to give different levels of details in those
+    two places sometimes.
+
+    Args:
+        url (str): url to try to reach
+        timeout (float): Maximum time allowed for the request
+
+    Returns:
+      str: Message about connection attempts.
+    """
+  
+    try_later = "To install any ALKiln version you might have to try again later."
+    we_cant_help = "The ALKiln team is unable to help with this problem."
+
+    connection_msg = "ALKilnInThePlayground was unable to connect to the servers that store ALKiln."
+  
+    try:
+      response = requests.get(url, timeout=timeout)
+      # response.raise_for_status()  # Don't raise an error
+
+      if response.status_code >= 400 and response.status_code < 500:
+        connection_msg = f"ALKilnInThePlayground sent an incorrect request to the servers that store ALKiln and got a { response.status_code } response code. Please get in touch with the ALKiln developers."
+        _log(f"🤕 ALKiP ERROR: { connection_msg }")
+        _log( traceback.format_exc() )
+  
+      if response.status_code >= 500 and response.status_code < 600:
+        connection_msg = f"The servers that store the ALKiln package were unavailable. ALKilnInThePlayground got a { response.status_code } response code. { try_later }"
+        _log(f"🤕 ALKiP ERROR: { connection_msg }")
+        _log( traceback.format_exc() )
+  
+      if response.ok:
+        connection_msg = "ok"
+  
+    except requests.exceptions.ConnectionError as con_err:
+      # This server isn't connected to the internet or there is some other
+      #     connection problem
+      # Discuss: More detailed explanations have more info, but are a possible
+      #     rabbit hole for the authors:
+      #     "ALKiln is stored on a third-party server that we trust, npmjs."
+      connection_msg = f'ALKilnInThePlayground is unable to connect to the server where ALKiln is stored. { we_cant_help } { try_later }'
+      _log(f"""🤕 ALKiP ERROR: npmjs ConnectionError. ALKilnInThePlayground is unable to connect to the servers where ALKiln is stored. The author's docassemble server might be disconnected from the internet, npmjs' server may be unavailable, or something else may be wrong. { we_cant_help } { try_later } Stacktrace:""")
+      _log( traceback.format_exc() )
+  
+    except requests.RequestException as req_err:
+      connection_msg = 'ALKilnInThePlayground ran into a "RequestException" error when it tried to connect to the server that stores the ALKiln package. { try_later }'
+      _log(f"🤕 ALKiP ERROR: { connection_msg } Stacktrace:")
+      _log( traceback.format_exc() )
+  
+    except Exception as general_err:
+      connection_msg = f'ALKilnInThePlayground ran into a "{ type( general_err ).__name__ }" error when it tried to connect to the server that stores the ALKiln package. { try_later }'
+      _log(f"🤕 ALKiP ERROR: { connection_msg } Stacktrace:")
+      _log( traceback.format_exc() )
+      # Discuss clarity of an alternative:
+      # _log( traceback.format_exc() )
+      # _log(f"🤕 ALKiP ERROR: { connection_msg } See the error message above.")
+
+    return connection_msg
+---
+# Action-needed values: Defaults (npm connection)
+# None
+---
+# Action-needed values: Hard-coded (npm connection)
+# None
+---
+# Wrapper state: Dynamic (npm connection)
+---
+event: fail_npm_action
+need:
+  - _log
+code: |
+  fail_npm_action_msg = f"""
+  { action_argument("error_type") } { action_argument("error_message") }: { action_argument("error_trace") }
+  Docassemble was looking for these variables:
+  { action_argument("variables") }
+  """
+  _log( fail_npm_action_msg )
+  background_response({
+    'ok': False,
+    'repeated': False,
+    'interrupted': False,
+    'logs': [ fail_npm_action_msg ]
+  })
+---
+id: re-check npm connection
+event: re_check_npm_connection
+code: |
+  npm.action.undefine
+---
+# Wrapper state: Defaults (npm connection)
+# None
+---
+# Wrapper values: Hard-coded (npm connection)
+---
+id: npm connection task description
+code: |
+  npm.ui.description = 'check npm connection'
+---
+id: npm task can continue on failure
+code: |
+  npm.action.continue_on_failure = True
+---
+id: unnecessary cancel key for npm task
+code: |
+  npm.action.cancel_key = 'cancel_npm_unnecessary'
+---
+# Wrapper values: Set once (npm connection)
+---
+# Shared values: Hard-coded (npm connection)
+# None
+---
+---
+---
+# ##################################
+# Install ALKiln
+# ##################################
+# Note: Installing takes about 30 seconds atm. Keep as background task as opposed to foreground.
+---
+# Unique wrapper: Dynamic (installing alkiln)
+---
+id: install alkiln task
+need:
+  - version_to_install
+  - kip_vars_path
+code: |
+  install.action.task = background_action('install_alkiln', None, version=version_to_install, kip_session_path=kip_vars_path)
+---
+# Background action: Logic (installing alkiln)
+id: install alkiln background action
+event: install_alkiln
+need:
+  - _debug
+  - _add_and_log
+  - format_error
+  - worker_log_link
+  - has_started_alkiln_install
+  - run_process_with_canceler
+  - install_alkiln_bash_file
+  - made_npm_dir_successfully
+  - install.action.task_data
+  - install.action.cancel_key
+code: |
+  # Discuss: How do we detect if someone _else_ on the server didn't properly finish installing ALKiln and that there will be cache problems?
+  
+  background_error_action('fail_install_action')
+
+  kip_session_path = action_argument('kip_session_path')
+
+  general_err_log = f"""🤕 ALKiP ERROR: ALKilnInThePlayground ran into an error when
+  it was trying to install ALKiln. Look above for more details
+  and check your { worker_log_link }."""
+
+  install_start_ok = True
+  if not made_npm_dir_successfully:
+    install_start_ok = False
+
+  # Run install only once
+  if has_started_alkiln_install:
+    # Examples: ALKiP devs forgot to define a var before running, so the task got retriggered
+    install_start_ok = False
+    install.action.task_data['repeated'] = True
+    _add_and_log( install.action.task_data['logs'], [f"""ALKilnInThePlayground tried to re-run the `install_alkiln` task. This may be an internal ALKilnInThePlayground problem. Look in your { worker_log_link } for more clues."""] )
+
+  if not install_start_ok:
+    # @@@TODO: Stop subprocess if already running. Operations are synchronous, but The Loop isn't. Basically, set cancel and we may need to add another flag. Better to let it finish running?
+    install.action.task_data['ok'] = False
+    _add_and_log( install.action.task_data['logs'], [ general_err_log ])
+    background_response( install.action.task_data )
+
+  # Must install with npm version, not GitHub branch as we don't know a simple way to get the
+  # npm version from the branch installation (to help the user install the right version) or,
+  # alternatively, avoid installing anything unnecessary. On GitHub, though, we hope to use
+  # the branch or commit as the source of truth for our version. This unfortunately means
+  # there can't be just one source of truth for which version of ALKiln a server is using.
+  
+  # =====================
+  # Run the install
+  # =====================
+
+  install_process_data = {}
+  to_run = [
+    'bash', install_alkiln_bash_file.path(),
+    '@suffolklitlab/alkiln', action_argument('version')
+  ]
+  
+  try:
+    has_started_alkiln_install = True
+    install_process_data = run_process_with_canceler(
+      to_run,
+      cancel_key=install.action.cancel_key,
+      json_path=kip_session_path,
+      descriptor="install ALKiln",
+      max_seconds=float( 60 * 2 ),
+      custom_env_vars=dict( NPM_CONFIG_PREFIX="/var/www/.npm-global" )
+    )
+  
+    _debug(f'''🐛 ALKiP INFO: Finished installing ALKiln''')
+    install.action.task_data['logs'].extend( install_process_data.get('logs', []) )
+
+  except Exception as install_process_error:
+    _add_and_log( install.action.task_data['logs'], [ format_error( install_process_error ), general_err_log ])
+
+  install.action.task_data['ok'] = install_process_data.get('ok', False)
+  install.action.task_data['interrupted'] = install_process_data.get('interrupted', False)
+  
+  background_response( install.action.task_data )
+---
+# Screens (installing alkiln)
+# Discuss: Should some or all screens be in a different document?
+---
+id: wait page for alkiln install
+# Discuss: Should `.wait` belong to `.ui` or `.action`? Maybe `.ui` should be kept for definitely persistent values. Maybe it should be called `.persistent`
+event: install.action.wait
+reload: 5
+prevent going back: True
+need:
+  - install.ui.canceled
+question: |
+  One sec, installing ALKiln v${ version_to_install }
+subquestion: |
+  <div class="spinner-container d-flex justify-content-center">
+  <div class="spinner-border" role="status">
+    <span class="visually-hidden">Installing...</span>
+  </div>
+  </div>
+
+  <div class="alert alert-danger" markdown="1">
+  ${ avoid_stopping_install_warning }
+  </div>
+  
+  This often takes less than a minute, though it can take longer if your server is slow or the servers that store ALKiln are slow.
+  
+  :clock: **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install.action.start_time ).delta) }**[BR]
+  (Updates about every 5 seconds depending on your server speed)
+
+  % if install.ui.canceled:
+  <div class="alert alert-info" markdown=1>We promise, your server is working on cancelling your installation. These things can take time! Here's a button you can press if that helps, though it doesn't do much `¯\_(ツ)_/¯`</div>
+  <div id="frustration">
+  ${ action_button_html("javascript:console.log(`Well sure, it does this too. You got me.`); $(`#frustration_result`)[0].style.display=`block`;", label="Hurry up!", color="danger", size="md""") }
+  </div>
+  <div id="frustration_result" style="display: none;">Ok, it does do a little more. That's all, though.</div>
+  
+  % endif
+
+action buttons:
+  - label: Cancel and try again
+    action: install.action.cancel
+    icon: fire
+    color: danger
+    show if: not install.ui.canceled
+---
+# Action-needed values: Dynamic (installing alkiln)
+---
+id: make npm dir if needed
+need:
+  - _log
+code: |
+  from pathlib import Path
+  try:
+    npm_dir = Path( "/var/www/.npm-global" )
+    npm_dir.mkdir( parents=True, exist_ok=True )
+    made_npm_dir_successfully = True
+  except Exception as make_npm_dir_error:
+    _log(f"""🤕 ALKiP ERROR: Unable to make the directory "/var/www/.npm-global".""")
+    made_npm_dir_successfully = False
+---
+# Action-needed values: Defaults (installing alkiln)
+# None
+---
+# Action-needed values: Hard-coded (installing alkiln)
+---
+objects:
+  - install_alkiln_bash_file: DAStaticFile.using(filename="data/sources/install_global_npm_package.sh")
+---
+# Wrapper state: Dynamic (installing alkiln)
+---
+event: install.action.cancel
+need:
+  - kip_vars_path
+  - save_kip_runtime_vars
+  - _debug
+code: |
+  _debug("💡 ALKiP INFO: Cancelling installation")
+  install.action.phase = 'canceled'
+  install.ui.canceled = True
+  save_kip_runtime_vars({ install.action.cancel_key: True }, kip_vars_path )
+---
+event: fail_install_action
+need:
+  - _log
+code: |
+  fail_install_action_msg = f"""
+  { action_argument("error_type") } { action_argument("error_message") }: { action_argument("error_trace") }
+  Docassemble was looking for these variables:
+  { action_argument("variables") }
+  """
+  _log( fail_install_action_msg )
+  background_response({
+    "ok": False,
+    "repeated": False,
+    "interrupted": False,
+    "logs": [ fail_install_action_msg ]
+  })
+---
+# Wrapper state: Defaults (installing alkiln)
+---
+id: has_started_alkiln_install default
+# TODO: replace with x.action.did_start
+code: |
+  has_started_alkiln_install = False  # Default
+---
+# Wrapper values: Hard-coded (installing alkiln)
+---
+id: install task description
+code: |
+  install.ui.description = 'install ALKiln'
+---
+id: cancel key for install task
+code: |
+  install.action.cancel_key = 'cancel_install'  # session config val
+---
+id: installation must be successful to continue
+code: |
+  install.action.continue_on_failure = False
+---
+# Wrapper values: Set once (installing alkiln)
+---
+# Shared values: Hard-coded (installing alkiln)
+# Discuss: This is shared with another file, not in here. Which file should the warning template go in?
+---
+id: stop install warning template
+template: avoid_stopping_install_warning
+content: |
+  While ALKiln is installing **try very hard to avoid**:
+
+  - Cancelling the installation
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Otherwise causing this server to reload, restart, or stop
+
+  Stopping in the middle might cause an invalid installation. If that happens, you will most likely have to clean up the invalid installation, which can sometimes be troublesome.
+
+  Instead, you can wait till the installation finishes and then install a different version.
+---
+---
+---
+# ##################################
+# ALKiln tests (test run)
+# ##################################
+---
+# Unique wrapper: Dynamic (test run)
+---
+need:
+  - tag_expression
+  - kip_vars_path
+  # Do I really need to pass it down this way? Is it enough to just `need` the value? Is it good to be explicit anyway?
+  - project_name
+code: |
+  tests.action.task = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name, kip_session_path=kip_vars_path)
+---
+id: run alkiln
+event: run_alkiln
+# TODO: Put some logs under _debug or _add_and_debug.
+need:
+  - _add_and_log
+  - worker_log_link
+  - has_started_tests  # TODO: Replace with .action.did_start
+  - tests.action.cancel_key
+  - tests.action.task_data
+  - tests.ui.description
+  - env_vars  # Use external custom_env_vars here?
+  - sources
+  - run_process_with_canceler
+code: |
+  from docassemble.webapp.files import SavedFile
+
+  background_error_action("fail_tests_action")
+  # Re-reproduce with new v: With a shortened timeout, when the process times out chrome closes, but node doesn't for ~50 sec more. Less than the full test, but still seems long.
+
+  # ------------- Guard the action -------------
+
+  # TODO: Stop subprocess if already running. Operations are synchronous, but The Loop isn't. Basically, set cancel and we may need to add another flag.
+  # `if` statement for idempotency - ensure tests are only run once
+  if has_started_tests:
+    _add_and_log(
+      tests.action.task_data['logs'],
+      [f"""🔎 ALKiP WARNING: Tried to re-run the { tests.ui.description } task. Docassemble was seeking `{ current_context().variable }`. Your { worker_log_link } may have more info."""]
+    )
+    background_response({
+      'ok': False,
+      'repeated': True,
+      'interrupted': tests.action.task_data.get('interrupted', False),
+      'logs': tests.action.task_data.get('logs', []),
+    })
+
+  # ------------- Setup -------------
+  
+  # Ensure that files in the 'sources' folder of all projects are
+  # cached in /tmp for S3 and such server configurations so that
+  # alkiln can get them there. They should be there for 2hrs at least.
+  # It's not possible to just pick one project.
+  # From https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/create_package.py#L14-L17
+  SavedFile(user_info().id, fix=True, section='playgroundsources')
+
+  sources_arg = f'--sources={ sources }'
+  _add_and_log( tests.action.task_data['logs'], f"""💡 ALKiP INFO: sources path: { sources }""")
+
+  tags = action_argument('tag_expression')
+  kip_session_path = action_argument('kip_session_path')
+
+  # `.communicate()` `timeout` is in seconds
+  # 60 seconds * 60 minutes * 6 hours
+  timeout_env_var_name = 'ALKILN_MAX_SECONDS_FOR_PLAYGROUND_TEST_RUN'
+  # Discuss: Is it possible to do this without `env_vars` nicely?
+  max_seconds = env_vars.get(
+    timeout_env_var_name,
+    60 * 60 * 6
+  )
+  max_seconds = float( max_seconds )
+
+  # Make sure not to pass an empty string for tags as that results in
+  # a "@" with no value after it in ALKiln.
+  if tags != '':
+    to_run = ['/var/www/.npm-global/bin/alkiln-run', tags, sources_arg]
+  else:
+    to_run = ['/var/www/.npm-global/bin/alkiln-run', sources_arg]
+
+  # Prepare the environment variables
+  custom_env_vars = dict(
+    SERVER_URL=f'{url_of("root", _external=True)}',
+    _ORIGIN='playground',
+    _ALKILN_ORIGIN='playground',
+    _PROJECT_NAME=action_argument('project_name'),
+    _ALKILN_PROJECT_NAME=action_argument('project_name'),
+    _USER_ID=f'{user_info().id}',
+    _ALKILN_USER_ID=f'{user_info().id}',
+    _TAGS=action_argument('tag_expression'),
+    # Only need these in GitHub
+    REPO_URL="X",
+    BRANCH_NAME="X",
+    DOCASSEMBLE_DEVELOPER_API_KEY="X"
+  )
+  
+  # ------------- Run tests -------------
+  
+  # Ensure tests don't re-run, even (especially) if they error
+  has_started_tests = True
+  tests_process_data = {}
+    
+  try:
+    tests_process_data = run_process_with_canceler(
+      to_run,
+      cancel_key=tests.action.cancel_key,
+      json_path=kip_session_path,
+      descriptor="ALKiln tests",
+      custom_env_vars=custom_env_vars,
+      max_seconds=max_seconds,
+      timeout_env_var_name=timeout_env_var_name
+    )
+    _debug(f"""💡 ALKiP INFO: Finished running ALKiln tests""")
+    tests.action.task_data['logs'].extend( tests_process_data.get('logs', []) )
+
+  except Exception as tests_process_error:
+    general_err_log = f"""🤕 ALKiP ERROR ALKP0010: ALKilnInThePlayground ran into an error
+    when it was trying to run ALKiln tests. This is different than
+    interview tests failing. Look above for more details and check
+    your { worker_log_link }."""
+    _add_and_log( tests.action.task_data['logs'], [ format_error( tests_process_error ), general_err_log ])
+
+  tests.action.task_data['ok'] = tests_process_data.get('ok', False)
+  tests.action.task_data['interrupted'] = tests_process_data.get('interrupted', False)
+  
+  background_response( tests.action.task_data )
+---
+# Screens (test run)
+---
+prevent going back: True
+event: tests.action.wait
+reload: 5
+need:
+  - tests.ui.cancelled
+question: |
+  :flask-vial: Hang tight, ALKiln is running the tests
+subquestion: |
+  <div class="spinner-container d-flex justify-content-center">
+  <div class="spinner-border" role="status">
+    <span class="visually-hidden">Running tests...</span>
+  </div>
+  </div>
+
+  <div class="alert alert-warning" markdown="1">
+  While tests are running try to avoid:
+  
+  - Editing this project
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Otherwise causing this server to reload, restart, or stop
+  
+  Otherwise, tests might fail and you may have to rerun them.
+  </div>
+  
+  :clock: **Elapsed time: ${ str( tests_elapsed_time.delta ) }**[BR]
+  (Updates about every 5 seconds depending on your server speed)
+  
+  % if tests.ui.cancelled:
+  <div class="alert alert-info" markdown=1>The tests are trying to stop, honest. They really are doing their best. Here's yet another button. It won't do much, but it might help you feel better `(͡◵ Ĺ̯ ͡◵ )`</div>
+  <div id="frustration">
+  ${ action_button_html("javascript:console.log(`Aaaand it also does this. Can't pull one over on you! I should know better by now.`); $(`#frustration_result`)[0].style.display=`block`; $(`#frustration .btn`)[0].textContent += ` Go!`;", label="Go!", color="danger", size="md""") }
+  </div>
+  <div id="frustration_result" style="display: none;">Yeah, it does do this stuff. That's all, though.</div>
+  % endif
+action buttons:
+  - label: Stop tests early
+    action: tests.action.cancel
+    icon: window-close
+    color: danger
+    show if: not tests.ui.cancelled
+---
+# Action-needed values: Dynamic (test run)
+# None
+---
+# Avoid putting this in  an action arg.
+# Want to keep this private. DA logs action args.
+id: sources path
+need:
+  - root_path
+  - project_name
+code: |
+  if get_config("s3").get("enable", False):
+    sources = f"{ root_path }/playgroundsources/{ user_info().id }/{ project_name }"
+  else:
+    sources = f"/usr/share/docassemble/files/playgroundsources/{ user_info().id }/{ project_name }"
+---
+# Action-needed values: Defaults (test run)
+---
+if:
+  - not_wants_tags
+code: |
+  tag_expression = ''
+---
+# Action-needed values: Hard-coded (test run)
+# None
+---
+# Wrapper state: Dynamic (test run)
+---
+event: tests.action.cancel
+need:
+  - kip_vars_path
+  - save_kip_runtime_vars
+  - _debug
+code: |
+  _debug("💡 ALKiP INFO: Cancelling tests")
+  tests.action.phase = 'cancelled'
+  tests.ui.cancelled = True
+  save_kip_runtime_vars({ tests.action.cancel_key: True }, kip_vars_path )
+---
+event: fail_tests_action
+need:
+  - _debug
+code: |
+  # Discuss: Make a custom error action for non-idempotency
+  fail_tests_action_msg = f"""
+  { action_argument("error_type") } { action_argument("error_message") }: { action_argument("error_trace") }
+  Docassemble was looking for these variables:
+  { action_argument("variables") }
+  """
+  _debug( fail_tests_action_msg )
+  # I think `.failed()` will be True. Test this :(
+  background_response({
+    "ok": False,
+    "repeated": False,
+    "interrupted": False,
+    "logs": [ fail_tests_action_msg ],
+  })
+---
+# Wrapper state: Defaults (test run)
+---
+# TODO: Replace with .action.did_start
+code: |
+  has_started_tests = False
+---
+# Wrapper values: Hard-coded (test run)
+---
+id: tests task description
+code: |
+  tests.ui.description = 'ALKiln tests'
+---
+id: tests can continue on failure
+code: |
+  tests.action.continue_on_failure = True
+---
+id: cancel key for tests task
+code: |
+  tests.action.cancel_key = 'cancel_tests'  # session config val
+---
+# Wrapper values: Set once (test run)
+---
+id: version of alkiln used for the test run
+# TODO: This might belong in the main file
+need:
+  - nice_time
+  - _debug
+code: |
+  tests.action.version = server_alkiln_version
+  _debug(f"💡 ALKiP INFO { nice_time() }: Version of ALKiln for session ID { current_context().session or 'UNKNOWN' } is v{ tests.action.version }")
+---
+id: elapsed time for test run
+reconsider: True
+code: |
+  # Deliberately explicit about the end time
+  tests_elapsed_time = date_difference( ending=current_datetime(), starting=tests.action.start_time )
+---
+# Shared values: Hard-coded (test run)
+# None
+---
+# ##################################
+# Test run artifacts
+# ##################################
+# TODO: artifacts background action
+---
+id: artifacts html task description
+code: |
+  artifacts.ui.description = 'tests artifacts html'
+---
+id: artifacts html can continue on failure
+code: |
+  artifacts.action.continue_on_failure = True
+---
+id: unnecessary cancel key for artifacts html task
+code: |
+  artifacts.action.cancel_key = 'cancel_artifacts_unnecessary'
+---
+---
+---
+# ##################################
+# Shared values
+# ##################################
+---
+# Shared values: Dynamic
+---
+id: path to file containing alkip json for session
+# Discuss: Do some of these belong in files.yml?
+need:
+  - root_path
+  - alkiln_session_id
+  - kip_session_filename
+code: |
+  kip_vars_path = f"{ root_path }/{ alkiln_session_id }/{ kip_session_filename }"
+---
+id: id of this alkiln test run interview
+need:
+  - very_safe_name
+  - timey
+code: |
+  alkiln_session_id = f"""alkiln_{ very_safe_name(timey()) }_{ current_context().session }"""
+---
+# Shared values: Hard-coded
+---
+id: name of kip runtime vars
+code: |
+  kip_session_filename = "alkip_runtime.json"
+---
