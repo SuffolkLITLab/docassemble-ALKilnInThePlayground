@@ -1,22 +1,32 @@
+# Contributors: JoshW, AK, WM, 
 # TODO: When offline, skip the install ALKiln page (except when they have no ALKiln installed). Leave button on other pages to install another version, but pressing that button should somehow show the user that they can't install a different ALKiln version when they're offline.
 # TODO: Reduce number of functions into plain blocks or events. Incidentally, that will allow avoiding the complex return value for getting the html.
 # TODO: Add codes to log messages.
 # TODO: It's unclear that the purpose of the link below a file is to download the file.
-# TODO: Use zip files and artifact folder **just once**. Use those to create in-interview variables. Since we delete the orginal zip files when we get to `show_output`, it should avoid showing future interview session visitors phantom errors.
-# TODO: Add "Running offline" info callout to every page when offline
+# TODO: Use zip files and artifact folder **just once**. Use those to create in-interview variables. Since we delete the orginal zip files when we get to `show_output`, that should avoid showing future interview session visitors phantom errors.
+# TODO: Add "Running offline" callout to every page when offline
 # TODO: Explore alkiln_config_vars vs. env_vars vs. cusotm_env_vars vs. dangerous_conf...
 # TODO: Guard function calls for functions that are only used once with a flag. That will help us find where undefined variables are causing functions to be run repeatedly.
 # TODO: There is a box shadow above accordion items that hides the gap between the accordion item and the header above it. That's slow. Some exploration has shown it's more challenging to improve than expected. Using a new element created just for that purpose isn't enough if it starts as unrendered.
 # TODO: replace `raise`s with error screens
 # TODO: Add more ids, including for code blocks
+# TODO: Research check for invalid alkiln install. This seems to require testing multiple angles. `npm ls` in alkiln's folder for direct dependencies with "npm error". Maybe `npm audit signatures` maybe in .npm-global/lib/node_modules and/or maybe in alkiln's folder. Maybe `npm explain --prefix /var/www/.npm-global` (or maybe in alkiln), though I'm not sure that's the right command. To check npm itself, maybe `npm doctor --prefix /var/www/.npm-global`, though we have some stuff that already errors despite working (versions and global bin folder not in PATH).
+# TODO: Consider url args to set `install.ui.cancelled`, `install.ui.failed`, etc. when starting a new interview to persist status of ALKiln package. Explore server-wide options for those.
+# TODO: Only install ALKiln when no one on the server is running tests. Conversley, don't run tests until an ALKiln install on the server is finished.
+# TODO: Match npm error errno -39 npm error ENOTEMPTY: directory not empty (must delete node_modules dir, (no pkg.json), maybe npm cache clean --force? (again, no, and re-install ALKiln)
+# TODO: Put in background actions: ~npm connection check~, ~making final page html~, ~install~, ~generating random~, getting news, removing files.
+# TODO: Examine styles for `id="console"` elements
+# TODO: Ensure npm_connection_msg is only evaluated under some circumstances when showing the project choosing page
 # Discuss: Show the user's username to them? Not great for recording anonymized runs through the interview, but it would put the information front and center. People have gotten confused before when exploring other user's sessions and, I believe, Projects.
 # Discuss: Allow authors to run tests in other people's Playgrounds when they have permissions to open sessions and Playgrounds of other users while they are exploring those Playgrounds.
 # Discuss: Make names.yml for safe names, timestamps, etc? strings.yml? special_strings.yml? text.yml instead? Include text manipulation?
+# Discuss: (needs re-confirmation with new version) for some reason (at least when I switch between online and offline) we sometimes go to the install screen when going back to restart with a version number of "None". There are other shenanigans that happen when going back with `restart`. We have a lot to explore there. There are enough hiccups that it may be worth adding a warning when the author has been offline.
+# Discuss: Add ALKiP session ID to the artifacts
 # Research: exactly how do ids on code blocks affect the cache
 
 # NOTES
-# Logs emojis: 🖊️ 🤕 💡
-# format: 🤕 ALKiln ERROR ALKP00nn: (Be clear it's from ALKiln with log code prefix indicatign to devs that it's from ALKiP. Also makes it easier when first editing the log codes because it's easier to delete just the log code.)
+# Logs emojis: 🖊️ 🤕 💡 🐛
+# Discuss format: 🤕 ERROR ALKP00nn: <message> (1. "ALKP" seems similar enough to ALK to make the connection. Unique enough to differentiate it from ALKiln? 2. Order of items makes it easier to edit icon+type together.)
 ---
 metadata:
   title: |
@@ -25,7 +35,14 @@ metadata:
     ALKiln
   description: |
     Run ALKiln tests on your server. No GitHub required.
+---
+default screen parts:
   under: |
+    ---
+    
+    This session ID: **${ current_context().session }**[BR]
+    The session start time: **${ start_time().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] }**
+    
     See guides for writing tests in the [ALKiln documentation](https://assemblyline.suffolklitlab.org/docs/alkiln/writing/).
 ---
 include:
@@ -34,6 +51,7 @@ include:
   - validate.yml
   - generate.yml
   - headers.yml
+  # Background actions are at the bottom to keep defaults
 ---
 features:
   css:
@@ -48,76 +66,71 @@ features:
 mandatory: True
 id: interview order
 need:
-  - npm.action.phase
   - _log
   - _debug
+  - alkiln_session_id
+  - server_alkiln_version
+  - npm.action.phase
+  - has_started_alkiln_install
+  - install.action.phase
+  - install.ui.cancelled
+  - install.ui.failed
+  - artifacts.action.phase
+  - artifacts.ui.cancelled
+  - artifacts.ui.failed
 code: |
   if not user_has_privilege( ['admin', 'developer'] ):
     ask_to_log_in
-  
+
+  # Discuss: Should dangerous_config_var_names be a func so that it reruns if author returning?
   if len( dangerous_config_var_names ) > 0:
     warn_about_dangerous_config_vars
   
-  if redo_after_stopped_with_invalid_install:
-    invalid_install = True
-    undefine_install_task = True
-    require_restart_install_timer = True
-    undefine( 'ask_version' )
-    undefine( 'install_failed' )
-    redo_after_stopped_with_invalid_install = False
+  if ( url_args.get( 'skip_install', False ) != 'true'
+    and (
+      # Can connect to npm to get new version
+      npm_version_lists_error == ''
   
-  if undefine_install_task:
-    undefine( 'install_task' )
-    undefine_install_task = False
-
-  _debug( f"""url_args: { url_args }""" )
-  if url_args.get( "skip_install", False ) != "true" and version_error == "":
+      # No valid version.
+      # TODO: Make this its own page. Perhaps.
+      or 'Could not get' in server_alkiln_version
+    )
+  ):
+    reconsider('server_alkiln_version')
     ask_version
-
-    if not npm.action.phase in ('failed', 'succeeded', 'canceled'):
+  
+    if not npm.action.phase in ('failed', 'succeeded', 'cancelled'):
       npm.action.run
-    if npm.ui.data.get('ok', False) and ( wants_install or invalid_install ):
-      # alkiln_current_version = "5.15.0" # testing
+
+    # Discuss: When do we reconsider npm connection?
+    if (
+      npm.ui.data.get('ok', False)
+      and install.action.desired
+      and install.action.phase != 'succeeded'
+    ):
+  
+      # server_alkiln_version = "5.15.0" # testing
       # alkip_version = "1.3.1"  # testing
   
-      # Show pre-installation ALKiln announcements if needed
+      # Divert to pre-installation ALKiln notifications if needed
       if ( post_install_request_news != None ):
         read_the_news
   
-      # Don't install if not needed
-      # Discuss: for some reason (at least when I switch between online and offline) we sometimes go to the install screen when going back to restart with a version number of "None". There are other shenanigans that happen when going back with `restart`. We have a lot to explore there. There are enough hiccups that it may be worth adding a warning when the author has been offline.
-      if ( started_with_different_version or invalid_install ) and version_to_install:
-        install_task
-        # `.wait()` could cause a timeout
-        if install_task.ready():
-          if install_task.failed():
-            # If failed after invalid install, even if it was a different
-            # failure, start again again. After an invalid install, we
-            # _really_ have to be sure to install.
-            if invalid_install:
-              redo_after_stopped_with_invalid_install = True
-            # Otherwise just show a failure message
-            else:
-              invalid_install = False # Default
-              flag_failed_installation  # Q: Does this get used?
+      # install.action.run handles looping screens until succeeds or skips
+      install.action.run
   
-          elif not install_task.failed():
-            invalid_install = False
-            # Avoid returning to this block (avoids running related functions)
-            wants_install = False
-
-        # Show install waiting screen
-        else:
-          if require_restart_install_timer:
-            restart_install_timer
-          wait_for_install
+  # Check for valid version again after attempted install
+  if 'Could not get' in server_alkiln_version:
+    # Show the first screen again, and with relevant information
+    # Discuss: Log `install.ui.logs`? Would that just be noise? Maybe log `server_alkiln_version`.
+    restart_ask_version
     
   project_name
   tag_expression
   set_parts( title=f"ALKiln { project_name } tests" )
   set_parts( subtitle=tag_expression )
 
-  _debug("Setting up")
+  # Discuss: put all of setup in a background action?
   if (
     ( artifacts_folder_and_runtime_config_final_status == 'done' and artifacts_errored )
     or ( validate_feature_files_final_status == 'done' and validation_errored )
@@ -131,7 +144,7 @@ code: |
     _debug( "One of the setup steps errored" )
     # TODO: If we expect ALKiln to have the necessary scripts
     # then show the error on final screen
-    # TODO: The below is used twide. Abstract it.
+    # TODO: The below is used twice. Abstract it.
     if not artifacts.action.phase in ('failed', 'succeeded', 'cancelled'):
       artifacts.action.run
   
@@ -157,13 +170,24 @@ code: |
       waiting_screen
   if not artifacts.action.phase in ('failed', 'succeeded', 'cancelled'):
     artifacts.action.run
-  
+
+  # Discuss: Add a `foo.ui.colate` for each action's output formatting?
   files_html = artifacts.ui.data.get('result', {}).get('html', '')
   test_run_outcome = artifacts.ui.data.get('result', {}).get('outcome', None)
   file_problem = artifacts.ui.data.get('result', {}).get('file_problem', True)
   remove_tmp_files
 
   show_output  # terminating screen
+---
+event: restart_ask_version
+# Discuss: Could we use `force_ask('ask_version')` without triggering
+# concurrency lock timeout? That must be possible. Otherwise, why would
+# it exist? Could we use that instead of `re_run_logic()` above as well?
+# After that was resolved, would the logic re-run again by itself?
+code: |
+  undefine('ask_version')
+  #! Danger! Risk of inifinite loop.
+  re_run_logic()
 ---
 code: |
   ran_tests = False # Default
@@ -174,6 +198,7 @@ code: |
 code: |
   setup_outputs = []  # Default
 ---
+# TODO: Move to dynamic vals section (not defaults)
 need:
   - root_path
   - project_name
@@ -215,11 +240,11 @@ subquestion: |
   To fix this:
   
   % if len( dangerous_config_var_names ) > 1:
-  - Change these names to something else in your config. Starting these types of variable names with something unique, like "ALKILN_", might help keep your variable names safe.
-  - Update the names in your tests.
+  1. Change these names to something else in your config. Starting these types of variable names with something unique, like "ALKILN_", might help keep your variable names safe.
+  1. Update the names in your tests.
   % else:
-  - Change this name to something else in your config. Starting the variable name with something unique, like "ALKILN_", might help keep your variable name safe.
-  - Update the name in your tests.
+  1. Change this name to something else in your config. Starting variable names with something unique, like "ALKILN_", might help keep your variable names safe.
+  1. Update the name in your tests.
   % endif
   
   When you have done that, restart this interview.
@@ -231,22 +256,9 @@ buttons:
 # Installation
 ####################################
 ---
-event: stop_install_early
-code: |
-  redo_after_stopped_with_invalid_install = True
-  install_task.revoke()
----
-code: |
-  redo_after_stopped_with_invalid_install = False  # Default
----
-code: |
-  invalid_install = False  # Default
----
-code: |
-  undefine_install_task = False  # Default
----
 need:
   - npm.ui.data
+# If CAN reach npm servers
 if: npm.ui.data.get('ok', False)
 code: |
   import subprocess
@@ -269,7 +281,7 @@ code: |
     try:
       minimum = [ int( part ) for part in minimum.split( ".", maxsplit=2 ) ]
     except Exception as err:
-      raise ValueError(f"🤕 ALKiln ERROR ALKP0001: npm version filter expected a version string in the form major.minor.patch, but got { minimum }") from err
+      raise ValueError(f"🤕 ERROR ALKP0001: npm version filter expected a version string in the form major.minor.patch, but got { minimum }") from err
     for version in versions:
       maj, minor, patch_and_prelease, = version.split(".", maxsplit=2)
       # If there is a prerelease attached, get rid of it in 
@@ -289,86 +301,122 @@ code: |
   # puzzle of above: @>4.0.0 seems to get all versions @>5.0.0 seems to get none (only have a single pre-release right now). When none are found, we get err 'JSONDecodeError: Expecting value: line 1 column 1 (char 0)'
   result = subprocess.run(['npm', 'view', "@suffolklitlab/alkiln", 'versions', '--json'], check=False, capture_output=True)
   if result.returncode != 0:
-    _log('🤕 ALKiln ERROR ALKP0002: npm install errored while getting full list of ALKiln\'s versions:')
+    _log('🤕 ERROR ALKP0002: npm install errored while getting full list of ALKiln\'s versions:')
     _log(result.stderr.decode("utf-8"))
     alkiln_version_list = []
     alkiln_major_versions = []
     alkiln_prerelease_versions = []
-    version_error = result.stderr.decode("utf-8")
+    npm_version_lists_error = result.stderr.decode("utf-8")
   else:
     versions = json.loads(result.stdout.decode())
     filtered = filter_versions_greater_or_equal(reversed(versions), '5.0.0')
     alkiln_major_versions = filtered[ "major" ]
     alkiln_prerelease_versions = filtered[ "pre" ]
     alkiln_version_list = []
-    version_error = ''
+    npm_version_lists_error = ''
 ---
 need:
   - npm.ui.data
+# If can't reach npm servers
 if: not npm.ui.data.get('ok', False)
 code: |
   alkiln_major_versions = []
   alkiln_prerelease_versions = []
   alkiln_version_list = []
-  version_error = ""
+  npm_version_lists_error = ''
 ---
+# TODO: Move closer to other ask_version questions
 id: which task but with no alkiln installed
+continue button field: ask_version
 if: |
-  'Could not get' in get_installed_version() or invalid_install
+  'Could not get' in server_alkiln_version or install.ui.cancelled or install.ui.failed
 need:
-  - get_installed_version
-  - invalid_install
+  - server_alkiln_version
+  - install.ui.cancelled
+  - install.ui.failed
+  - install.ui.logs
+  - get_any_console_html
 question: |
   Install ALKiln
 subquestion: |
   <div class="alert alert-warning" markdown="1">
-  It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and that installation got interrupted at a bad time. You need a new version of ALKiln.
+  % if not install.ui.failed and not install.ui.cancelled:
+  Sorry, ALKilnInThePlayground is unable to find a version of ALKiln installed on your server. It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and that installation got interrupted at a bad time. You need a new version of ALKiln.
+  % elif install.ui.cancelled:
+  It looks like you or someone else may have stopped early when you or they were installing a new version of ALKiln${", though your server thinks {your current version of ALKiln} is **" + server_alkiln_version + "**" if not "Could not get" in server_alkiln_version else "" }. To be sure that your server has a valid version of ALKiln, we recommend you try to install again.
+  % elif install.ui.failed:
+  ALKilnInThePlayground had an error when you or someone else last tried to install ALKiln${", though your server thinks {your current version of ALKiln} is **" + server_alkiln_version + "**" if not "Could not get" in server_alkiln_version else "" }. To be sure that your server has a valid version of ALKiln, we **strongly** recommend that you install a new version.
+  % endif
+  If you keep having trouble, you can try to clean up an invalid ALKiln installation before you come back and try again.
+
+  ${ action_button_html( url_action("potentially_dangerous_actions"), label="Try to clean up an invalid ALKiln installation", color="warning", new_window=True ) }
+
+  If you keep having problems, come talk to us.
   </div>
 
+  % if not install.ui.logs is None:
+  ${ get_any_console_html( install.ui.logs, "ALKiln_installation_logs.txt", descriptor="Installation" ) }
+  % endif
+
   Which version of ALKiln do you want to install? The top choice is the most recent version.
+# Discuss: timestamp of when version number was last determined?
+
 fields:
-  - Install a verison of ALKiln: wants_install
+  - Install a version of ALKiln: install.action.desired
     datatype: yesno
-  - note: |
-      <div class="alert alert-warning" markdown="1">
-      While ALKiln is installing you should **try very hard to avoid**:
-      
-      - Saving a python module
-      - Pulling or uploading a package with a python module
-      - Otherwise causing this server to reload, restart, or stop
-      </div>
-    show if: wants_install
   - Choose an ALKiln version: version_to_install
     js show if:
-      val('wants_install') && !val('wants_experimental')
+      val('install.action.desired') && !val('wants_experimental')
     choices:
       code: |
         alkiln_major_versions
   - Install an experimental version instead: wants_experimental
     datatype: yesno
-    show if: wants_install
+    show if: install.action.desired
   - Experimental ALKiln version: version_to_install
     show if: wants_experimental
     choices:
       code: |
         alkiln_prerelease_versions
-continue button field: ask_version
+  - note: |
+      <div class="alert alert-warning" markdown="1">
+      ${ avoid_stopping_install_warning }
+      </div>
+    show if: install.action.desired
 validation code: |
-  if not wants_install:
+  if not showifdef('install.action.desired') and "Could not get" in server_alkiln_version:
     validation_error('You must install a version of ALKiln')
+comment: |
+  For when we check for an invalid ALKiln install:
+  It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and that installation got interrupted at a bad time. You need a new version of ALKiln.
 ---
+# TODO: Move this, perhaps to the bottom, or perhaps to top with metadata
+# Discuss: ALKiln v wording might be shorter: "Your server thinks you have **ALKiln v${". Would term work well there?
+# Q: Can keys of terms use regex? A: I believe not, but you can match to multiple terms. See docs. That wouldn't help us match against version nums
+terms:
+  your current version of ALKiln: |
+    This version number may change when a page loads or reloads after either you or someone else on your server installs a different version of ALKiln.
+---
+id: temp explanation of version change reasons
+# TODO: move elsewhere?
+# This is instead of logic that would detect when the version changed since we plan to properly handle controlling individual versions later.
+template: ways_version_updates
+content: |
+  This version number may change when a page loads or reloads after either you or someone else on your server installs a different version of ALKiln.
+---
+# TODO: Move closer to other ask_version blocks
 # TODO: Test these different versions of the first page show up at the right times
 # TODO: Switch to console copy functionality when we implement that. Include text conversion to preserve links, etc.
+# TODO: Is there a more robust version of text replacing? '<a' is too ambiguous
 id: pick which task, with offline and no alkiln installed
 event: ask_version
 need:
   - npm.ui.data
-  - get_installed_version
-  - invalid_install
-  - link_start_regex
-  - link_end_regex
+  - server_alkiln_version
+  - install.ui.cancelled
+  - install.ui.failed
 if: |
-  not npm.ui.data.get('ok', False) and ('Could not get' in get_installed_version() or invalid_install)
+  not npm.ui.data.get('ok', False) and ('Could not get' in server_alkiln_version or install.ui.cancelled or install.ui.failed)
 question: |
   Unable to install ALKiln
 subquestion: |
@@ -379,7 +427,7 @@ subquestion: |
   
   </div>
 
-  It also looks like you either don't have ALKiln installed yet or perhaps a previous installation of ALKiln got messed up. For example, someone may have started installing a version and the installation got interrupted at an unfortunate time.
+  It also looks like you either don't have {a version of ALKiln} installed yet or maybe a previous installation of ALKiln got messed up. For example, someone may have started installing a version and the installation got interrupted at a bad time.
 
   You will have to run tests later.
 action buttons:
@@ -387,21 +435,24 @@ action buttons:
     action: do_session_no_args
     icon: undo
     color: warning
+terms:
+  a version of ALKiln: |
+    ${ ways_version_updates }
 ---
-code: |
-  import re
-  link_start_regex = r'\<a\b'
-  link_end_regex = r'\<\a\b'
----
-# TODO: (For the future) Don't need `if` around news request I think. Double check.
+# TODO: Change pre_install_request to front_page, and post_install to pre_install
+# TODO: Double check if we need `if` around news request
 # Discuss: Add explicit refresh button
-id: which task but with prexisting version
+# Upstream bug?: Adding a check for truthy or True value at the end causes an error that "fr" translation file is missing on the local server
+# TODO: Delete alkp session folder after each background action. Also consider storing the folder in the Project itself.
+id: which task but with pre-existing version
+continue button field: ask_version
 need:
   - npm.ui.data
-  - invalid_install
-  - get_installed_version
+  - server_alkiln_version
+  - install.ui.cancelled
+  - install.ui.failed
 if: |
-  not 'Could not get' in get_installed_version() and not invalid_install
+  not 'Could not get' in server_alkiln_version and not install.ui.cancelled and not install.ui.failed
 question: |
   ALKiln version
 subquestion: |
@@ -409,15 +460,11 @@ subquestion: |
   ${ pre_install_request_news_template }
   % endif
   
-  This server's current version of ALKiln is **${ get_installed_version() }**
+  Your server thinks {your current version of ALKiln} is **${ server_alkiln_version }**
   
   % if npm.ui.data.get('ok', False):
-  Do you want to install a different version of ALKiln before testing? While ALKiln is installing you should **try very hard to avoid**:
-      
-  - Saving a python module
-  - Pulling or uploading a package with a python module
-  - Otherwise causing this server to reload, restart, or stop
-
+  Do you want to install a different version of ALKiln before testing?
+  
   % else:
   Skip this page to just run the tests.
   
@@ -427,72 +474,40 @@ subquestion: |
   <pre class="p-2">${ str( npm.ui.get('logs', []) ).strip().replace("<a", "ªªªª").replace("</a", "§§§§").replace("<", "&lt;").replace("ªªªª", "<a").replace("§§§§", "</a") }</pre>
   </div>
 
-  You can still continue to run tests with your current version of ALKiln.
+  You can still continue to the next page to run tests with your current version of ALKiln.
   % endif
   
 fields:
-  - Install a different verison of ALKiln: wants_install
+  - Install a different version of ALKiln: install.action.desired
     datatype: yesno
     show if:
       code: |
         npm.ui.data.get('ok', False)
   - Choose an ALKiln version: version_to_install
     js show if:
-      val('wants_install') && !val('wants_experimental')
+      val('install.action.desired') && !val('wants_experimental')
     choices:
       code: |
         alkiln_major_versions
   - Install an experimental version instead: wants_experimental
     datatype: yesno
-    show if: wants_install
+    show if: install.action.desired
   - Experimental ALKiln version: version_to_install
     show if: wants_experimental
     choices:
       code: |
         alkiln_prerelease_versions
-continue button field: ask_version
----
-code: |
-  if version_to_install != get_installed_version():
-    started_with_different_version = True
-  else:
-    started_with_different_version = False
----
-# Discuss: Should `if matches == None:` be an error path?
-need:
-  - da_log_more_info
-code: |
-  import subprocess
-  import re
-  
-  def get_installed_version():
-    """
-    Returns string to print for the version number or an error message with
-        'Could not get'.
-        Discuss: a better way to fail. Separate the error messages from the
-        failure itself.
-
-    Returns:
-        str: The version number or an error to show the user.
-    """
-
-    # https://stackoverflow.com/a/13332300
-    packages = subprocess.run(['npm', 'list', '-g', '--prefix', '/var/www/.npm-global', '--depth', '0', '-p', '-l'], check=False, capture_output=True)
-    # What would cause an error here?
-    if packages.returncode != 0:
-      _log('🤕 ALKiln ERROR ALKP0003: getting this server\'s currently installed ALKiln version:')
-      _log(f'Error code: { packages.returncode }')
-      _log( packages.stderr.decode("utf-8") )
-      server_version = f"Could not get this server's version of ALKiln. ALKilnInThePlayground got an error instead. { da_log_more_info }"
-    else:
-      pattern = re.compile(r'suffolklitlab/alkiln@(\d.*)$')
-      matches = re.search(pattern, packages.stdout.decode())
-      if matches == None:
-        server_version = "Could not get this server's version of ALKiln. It seems to be missing. Install a version of ALKiln to continue."
-      else:
-        server_version = matches.group(1)
-        del matches # cannot pickle error otherwise
-    return server_version
+  - note: |
+      <div class="alert alert-warning" markdown="1">
+      ${ avoid_stopping_install_warning }
+      </div>
+    show if: install.action.desired
+action buttons:
+  - label: Re-check connection
+    icon: plug
+    action: re_check_npm_connection
+    color: secondary
+    show if: not npm.ui.data.get( 'ok', False )
 ---
 reconsider: True
 id: alkip_version
@@ -502,27 +517,21 @@ code: |
   # In an installed package:
   try:
     # In the playground, I believe this would be "playground". Haven't yet
-    # found a way to get the version number of a Playground ALKiP
+    # found a way to get the version number of a Playground ALKiP for devs
     alkip_version = importlib.metadata.version( current_context().package )
   
   except:
     alkip_version = 'development'  # Don't show any notifications in development environment until we work this out
   
-  # alkip_version = '1.4.0'  # testing. TODO: remove
----
-reconsider: True
-id: alkiln_current_version
-code: |
-  alkiln_current_version = get_installed_version()
+  # alkip_version = '1.4.0'  # testing
 ---
 reconsider: True
 id: alkiln_desired_version
 code: |
-  if defined('ask_version') and wants_install:
+  if defined('ask_version') and install.action.desired:
     alkiln_desired_version = version_to_install
   else:
     alkiln_desired_version = None
-  _debug(f"version_to_install: {version_to_install}")
 ---
 reconsider: True
 id: dal_version
@@ -543,7 +552,7 @@ id: live breaking news
 need:
   - has_command
   - alkip_version
-  - alkiln_current_version
+  - server_alkiln_version
   - alkiln_desired_version
   - dal_version
   - da_update_version
@@ -567,17 +576,17 @@ code: |
     bin_name = "alkiln-news"
     news_cmd_exists = has_command( bin_name )
     if not news_cmd_exists:
-      _debug(f"🖊️ ALKiln NOTE: The '{ bin_name }' command doesn't exist in this version of ALKiln")
+      _debug(f"🖊️ NOTE ALKP: The '{ bin_name }' command doesn't exist in this version of ALKiln")
       return None
 
     _debug(f"alkip_version {alkip_version}", "console")
     _debug(f"alkiln_desired_version {alkiln_desired_version}", "console")
-    _debug(f"alkiln_current_version {alkiln_current_version}", "console")
+    _debug(f"server_alkiln_version {server_alkiln_version}", "console")
   
     news_args_ob = {
       'alkip_version': alkip_version,
       'alkiln_desired_version': alkiln_desired_version,
-      'alkiln_current_version': alkiln_current_version,
+      'alkiln_current_version': server_alkiln_version,
       'dal_version': dal_version,
       'da_update_version': da_update_version,
       'da_docker_run_version': da_docker_run_version
@@ -590,7 +599,7 @@ code: |
     custom_env = dict( os.environ, **env_vars )
     returncode = None
     
-    _debug('💡 ALKiln INFO: Starting ALKiln news bulletin check. Running:')
+    _debug('💡 INFO ALKP: Starting ALKiln news bulletin check. Running:')
     _debug(to_run)
 
     try:
@@ -604,8 +613,8 @@ code: |
       _debug(f"Ran news subprocess")
   
       if news_subprocess.returncode != 0:
-        news_err_msg = news_subprocess.stderr.decode('utf-8')
-        _log('🖊️ ALKiln NOTE: Skipped getting news bulletin from ALKiln')
+        news_err_msg = f"stderr: { news_subprocess.stderr.decode('utf-8') }"
+        _log('🖊️ NOTE ALKP: Skipped getting news bulletin from ALKiln')
         _debug( news_err_msg )
         preprint = None
       else:
@@ -614,11 +623,11 @@ code: |
       if preprint != None:
         codes = ' '.join(re.findall(r'ALK\d{4}', preprint))
         if ("ALK0278" in preprint or "ALK0279" in preprint):
-          _debug(f"💡 ALKiln INFO: Looked for notifications from ALKiln. There were none. No news is probably good news. Returned code or codes: { codes }")
+          _debug(f"💡 INFO ALKP: Looked for notifications from ALKiln. There were none. No news is probably good news. Returned code or codes: { codes }")
           preprint = None
       
         else:
-          _log(f"💡 ALKiln INFO: Found ALKiln notifications. If you can't already see them, refresh your interview screen. Returned code or codes: { codes }")
+          _log(f"💡 INFO ALKP: Found ALKiln notifications. If you can't already see them, refresh your interview screen. Returned code or codes: { codes }")
   
     except Exception as news_error:
       define('broad_news_exception', news_error)
@@ -711,7 +720,7 @@ question: |
 subquestion: |
   This might change your mind about the version you want to install.
 
-  % if version_error == "" and post_install_request_news != None:
+  % if npm_version_lists_error == "" and post_install_request_news != None:
   ${ post_install_request_news_template }
   % endif
 
@@ -720,163 +729,35 @@ continue button field: read_the_news
 back button: True
 back button label: Install a different version
 ---
-# TODO: How long does this typically take? If short enough, try changing this to a foreground task
-code: |
-  install_task = background_action('install_alkiln', None, version=version_to_install)
----
-event: install_alkiln
-need:
-  - did_install
-code: |
-  import subprocess
-  import os
-  
-  # TODO: How do we detect if someone _else_ on the server didn't properly finish installing ALKiln and that there will be no cache problems?
-  
-  subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
-  
-  # Must install with npm version, not GitHub branch as
-  # we don't know a simple way to get the npm version from the
-  # branch installation so we can help the user install the
-  # right version or, alternatively, avoid installing anything
-  # unnecessary. On GitHub, though, we hope to use the branch
-  # or commit as the source of truth for our version. This
-  # unfortunately means there can't be just one source of truth
-  # for which version of ALKiln is being used.
-  
-  # Run install only once. Needed here?
-  if not did_install:
-    to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
-    install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
-    did_install = True
-  
-  log(f"""💡 ALKiln INFO: Trying to install version { action_argument("version") }.""")
-  if install_output.returncode != 0:
-    result = install_output.stderr.decode('utf-8')
-    log(f'🤕 ALKiln ERROR ALKP0004: installing ALKiln version {action_argument("version")} failed')
-    log(result)
-    
-    # Should this be a default behavior with any error?
-    if 'ENOTEMPTY' in result:
-      # When tested, returned non-zero exit status 217 was the logged subprocess err
-      
-      log('💡 ALKiln INFO: Trying to clean up the old ALKiln installation.')
-      # https://stackoverflow.com/a/72022642
-      delete_kiln_output = subprocess.run(['rm', '-r', '/var/www/.npm-global/lib/node_modules/@suffolklitlab'], check=False, capture_output=True)
-      
-      # Do we need an idempotency flag here?
-      log(f"""💡 ALKiln INFO: Trying to install version { action_argument("version") } again.""")
-      install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
-      
-      # Discuss: If install failed again, worth a 3rd try?
-      if install_output.returncode != 0:
-        log(f'🤕 ALKiln ERROR ALKP0005: Error on both attempts to install version {action_argument("version")}:')
-        log(install_output.stderr.decode('utf-8'))
-        
-  # Always throws/excepts if is still an error.
-  # TODO: Create page to display unhandled errors from this.
-  install_output.check_returncode()
-  
-  # If no error thrown by now, log output and succeed
-  result = install_output.stdout.decode('utf-8')
-  log('💡 ALKiln INFO: ALKiln Installation succeeded:')
-  log(result)
-
-  background_response(result)
----
-code: |
-  did_install = False
----
-# Mark `install_failed` as True instead
-code: |
-  install_failed = True
-  flag_failed_installation = True
----
-# The default when requiring `install_failed`
-code: |
-  install_failed = False
----
-id: wait page for alkiln install
-prevent going back: True
-reload: True
-event: wait_for_install
-question: |
-  One sec, installing ALKiln v${ version_to_install }
-subquestion: |
-  <div class="spinner-container d-flex justify-content-center">
-  <div class="spinner-border" role="status">
-    <span class="visually-hidden">Installing...</span>
-  </div>
-  </div>
-
-  <div class="alert alert-danger" markdown="1">
-  While ALKiln is installing **try very hard to avoid**:
-  
-  - Saving a python module
-  - Pulling or uploading a package with a python module
-  - Otherwise causing this server to reload, restart, or stop
-  </div>
-  
-  This should take less than a minute, though it can take longer if your server is slow or the servers that store ALKiln are slow.
-  
-  **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }**[BR]
-  (Updates about every 10 seconds depending on your server speed)
-
-# revoke install task
-action buttons:
-  - label: Cancel and try again
-    action: stop_install_early
-    icon: window-close
-    color: danger
----
-# TODO: Explore these install_timer blocks
-code: |
-  require_restart_install_timer = False
----
-need:
-  - current_datetime
-event: restart_install_timer
-code: |
-  require_restart_install_timer = False
-  install_start = current_datetime()
----
-need:
-  - current_datetime
-code: |
-  install_start = current_datetime()
----
 ####################################
 # Running tests
 ####################################
 ---
 id: choose project
 need:
-  - install_failed
-  - version_error
+  - install.ui.cancelled
+  - install.ui.failed
   - da_log_more_info
   - worker_log_more_info
-  - get_installed_version
+  - server_alkiln_version
+  # - npm_version_lists_error
 prevent going back: True
 question: |
   Run ALKiln tests
 subquestion: |
-  % if install_failed or version_error != '':
-  
-  <div class="alert alert-warning">
-  % if install_failed:
-  ALKilnInThePlayground was unable to install a new version of ALKiln. ${ worker_log_more_info }
-  % endif
-
-  % if version_error != '':
-  Usually you would have seen an option here to install a different version of ALKiln. We skipped that screen because there was a problem getting the ALKiln package. ${ da_log_more_info }
-  % endif
+  % if install.ui.cancelled:
+  <div class="alert alert-warning" markdown=1>
+  You started to install a new version of ALKiln and then stopped early. Your server thinks {your current version of ALKiln} is **${ server_alkiln_version }** installed. We recommend you try to fully install a new version before running your tests.
   </div>
-  
-  Note that this might be a problem with the servers that store ALKiln's code, which are managed by node package manager (npmjs). The <a href="https://status.npmjs.org/">npmjs status page</a> might tell you if many npmjs servers are having trouble.
-  
-  You can still run your tests with the version of ALKiln that you already have, **ALKiln v${ get_installed_version() }**. If you want to use a different version of ALKiln, you will have to try again later.
+
+  % elif install.ui.failed:
+  <div class="alert alert-warning" markdown=1>
+  ALKilnInThePlayground had an error when you or someone else last tried to install ALKiln. your server thinks {your current version of ALKiln} is **${ server_alkiln_version }** installed, but we **strongly** recommend you try to fully install a new version before running your tests. ${ worker_log_more_info }
+  </div>
+
   % else:
-  You will run these tests with **ALKiln v${ get_installed_version() }**.
+    You will run these tests with **ALKiln v${ server_alkiln_version }**.
+  
   % endif
 
   <div class="alert alert-warning" markdown="1">
@@ -888,7 +769,7 @@ subquestion: |
   - Otherwise causing this server to reload, restart, or stop
   </div>
   
-  You can choose to test a Project from your Playground on this server.
+  Choose a Project of yours that has test files. Test files are files in a package's Sources folder that end with `.feature`.
   
 fields:
   - What Project do you want to test?: project_name
@@ -933,8 +814,10 @@ code: |
 ---
 need:
   - tag_expression
+  - kip_vars_path
   - project_name
 code: |
+  # Discuss: Pass the value through the function or `need` it?
   test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
 ---
 # Discuss: Should this be in the helpers section?
@@ -1309,14 +1192,20 @@ code: |
       # Discuss: should these be summary files too? Should
       # "debug_log" be listed if "report" is missing?
       if file.name == 'debug_log.txt':
-        with open(file.path, 'r') as report:
-          content = report.read()
-        if 'ALK0099' in content:
-          local_test_run_outcome = 'failed'
-        elif 'ALK0055' in content:
-          local_test_run_outcome = 'unexpected'
-        elif 'ALK0054' in content:
-          local_test_run_outcome = 'passed'
+        local_test_run_outcome = 'unexpected'
+        try:
+          with open(file.path, 'r') as report:
+            content = report.read()
+          if 'ALK0099' in content:
+            local_test_run_outcome = 'failed'
+          elif 'ALK0055' in content:
+            local_test_run_outcome = 'unexpected'
+          elif 'ALK0054' in content:
+            local_test_run_outcome = 'passed'
+        except Exception as debug_log_open_err:
+          import traceback
+          _debug(f"🖊️ NOTE ALKP: No debug_log.txt file.")
+          _debug("\n".join( traceback.format_exception( debug_log_open_err ) ))
       elif file.name == 'temp_unexpected_results_debug_log.txt':
         # Always skip this file. Don't worry, unexpected_results.txt gets added along with
         # the rest of the files
@@ -1448,7 +1337,7 @@ code: |
           { zip_html }
   
           <nav class="to_console_logs_from_top">
-            <a class="non_da_internal_link btn btn-secondary" href="#console" markdown="1" type="button">:arrows-down-to-line: Jump down to the full console logs</a>
+            <a class="non_da_internal_link btn btn-secondary" href="#console" markdown="1" type="button"><i class="fa-solid fa-arrows-down-to-line"></i> Jump down to the full console logs</a>
           </nav>
         </div>
       </section>
@@ -1465,6 +1354,7 @@ need:
   - folder_name
   - da_log_more_info
   - format_error
+  - get_artifacts_zip_path
 code: |
   import subprocess
   
@@ -1473,8 +1363,17 @@ code: |
     Returns:
         str: the zip download button HTML for the artifacts folder
     """
+
+    _debug(f"""💡 INFO ALKP: will try to get the artifacts zip from "{ folder_path }" (in "{ root_path }") and save the artifacts zip with the name "{ zip_name }".""" )
   
-    _debug(f"""💡 ALKiln INFO: will try to get the artifacts zip from "{ folder_path }" (in "{ root_path }") and save the artifacts zip with the name "{ zip_name }".""" )
+    zip_not_found_html = f'''
+        <div class='alkiln_error alert alert-warning'>ALKilnInThePlayground was unable to create a zip file for the test artifacts. Sorry about that. You might find more clues on this page. { da_log_more_info }</div>\n
+      '''
+
+    if zip_name == None:
+      return zip_not_found_html
+
+    _debug(f'''💡 INFO ALKP: will try to get the artifacts zip from '{ folder_path }' (in '{ root_path }') and save the artifacts zip with the name '{ zip_name }'.''' )
 
     # TODO: Remove zip_name_no_ext if possible. `zip` cmd doesn't need it.
 
@@ -1493,33 +1392,31 @@ code: |
         returncode = zip_process.returncode
 
         if returncode == 12:
-          _log( f'🤕 ALKiln ERROR: when trying to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }", the zip command was unable to find the file or directory. Return code "{ zip_process.returncode }" ("zip has nothing to do").' )
+          _log( f'🤕 ERROR ALKP: when trying to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }", the zip command was unable to find the file or directory. Return code "{ zip_process.returncode }" ("zip has nothing to do").' )
         elif returncode == 15:
-          _log( f'🤕 ALKiln ERROR: when trying to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }", the zip command was unable to create a file to write to. Return code "{ zip_process.returncode }".' )
+          _log( f'🤕 ERROR ALKP: when trying to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }", the zip command was unable to create a file to write to. Return code "{ zip_process.returncode }".' )
   
         else:
-          _log( f'🤕 ALKiln ERROR ALKP0007: error running `zip` command to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }" with return code "{ zip_process.returncode }". stderr:' )
+          _log( f'🤕 ERROR ALKP ALKP0007: error running `zip` command to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }" with return code "{ zip_process.returncode }". stderr:' )
           _log( zip_process.stderr.decode( "utf-8" ))
 
     except FileNotFoundError as zip_process_error:
       zipping_did_error = True
-      _log( f'🔎 ALKiln WARNING: could not find the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
+      _log( f'🔎 WARNING ALKP: could not find the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
       _log( format_error( zip_process_error ))
       
     except Exception as zip_process_error:
       zipping_did_error = True
-      _log( f'🤕 ALKiln ERROR: subprocess errored when ALKilnInThePlayground tried to zip the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
+      _log( f'🤕 ERROR ALKP: subprocess errored when ALKilnInThePlayground tried to zip the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
       _log( format_error( zip_process_error ))
 
     if zipping_did_error:
-      return f"""
-        <div class="alkiln_error alert alert-warning">ALKilnInThePlayground was unable to create a zip file for the test artifacts. { da_log_more_info }</div>\n
-      """
+      return zip_not_found_html
   
-    zip_path = get_zip_path()["path"]
+    zip_path = get_artifacts_zip_path()["path"]
   
     if zip_process.stdout:
-      _debug(f"""💡 ALKiln INFO: saved the artifacts zip file correctly to "{ zip_path }". stdout:""")
+      _debug(f"""💡 INFO ALKP: saved the artifacts zip file correctly to "{ zip_path }". stdout:""")
       _debug( zip_process.stdout )
 
     zip_da_file = DAFile()
@@ -1534,7 +1431,7 @@ code: |
 id: no tests instructions
 template: no_tests_instructions
 content: |
-  <div class="no_output">
+  <div class="no_output prose">
     <p>ALKiln found no summary files (like report.txt). Maybe no tests ran. Here are some questions that might help find the problem.</p>
     <p>Does <a class="non_da_internal_link" href="#console">the console output at the bottom of this page</a> show that the tests ran "0 scenarios"? If so:</p>
     <ul>
@@ -1641,7 +1538,7 @@ comment: |
       _log( f'🤕 ALKiln ERROR: error zipping generated scenarios at "{ folder_path }" to "{ gen.zip_path }":' )
   
     if zip_process.returncode != 0:
-      _log( zip_process.stderr.decode("utf-8") )
+      _log( f'''stderr: { zip_process.stderr.decode('utf-8') }''' )
     elif zip_data[ "problem" ] != "":
       _log( zip_data[ "problem" ] )
   
@@ -1802,6 +1699,124 @@ code: |
 
     return html
 ---
+id: console text html
+need:
+  - very_safe_name
+  - copier
+  - download_file_button
+  - console_full_text
+  - to_section_bottom_button
+  - to_section_top_button
+code: |
+  import os
+  import re
+  
+  def get_tests_console_html( artifacts_name ):
+    """
+    Returns HTML of the tests' console output section with copyable text.
+
+    Args:
+        artifacts_name (str): Name of the artifacts folder
+
+    Returns:
+        str: HTML of the tests' console output section with copyable text.
+    """
+
+    safe_name = very_safe_name( artifacts_name )
+
+    da_file = DAFile()
+    da_file.initialize(filename=f'{ safe_name }_debug_log.txt')
+    da_file.write( console_full_text.content )
+    da_file.commit()
+
+    console = sections[ sections.number_gathered() ]
+    console.heading = "ALKiln console logs"
+    console.id = "console_heading"
+  
+    console.download = download_file_button( da_file.url_for() )
+    console.copier = copier
+    console.menu = menu_download_n_copy( console )
+  
+    # Avoid abstracting navigation arrangement. Too coupled; jump functionality
+    # is in the header, but also spread around the edges of the section.
+    console.jump_id = "console_jump"
+    console.nav = to_section_bottom_button( console.jump_id )
+    console.to_top = to_section_top_button( console.jump_id )
+
+    link_start_regex = r'\<a\b'
+    link_end_regex = r'\<a\b'
+  
+    html = f"""
+    <section id="console" class="section console_output alkiln_copy">
+      <div id="{ console.jump_id }" class="jump_destination"></div>
+      { sticky_h2_header( console ) }
+      <pre class="visible_text">{ re.sub( 'ªªªª', '<a', (re.sub( '§§§§', '</a', (re.sub( '<', '&lt;', (re.sub( link_end_regex, '§§§§', (re.sub( link_start_regex, 'ªªªª', (str( console_full_text ).strip()) )) )) )) )) ) }</pre>
+      { console.to_top }
+    </section>
+    """
+
+    return html
+---
+id: html for consoleish output
+need:
+  - very_safe_name
+  - copier
+  - download_file_button
+  - to_section_bottom_button
+  - to_section_top_button
+code: |
+  import os
+  
+  def get_any_console_html( contents, unique_name, descriptor="ALKiln tests" ):
+    """
+    Returns HTML of the tests' console output section with copyable text.
+
+    Discuss: Descriptor unique enough for HTML id?
+    TODO: Find and emulate more robust replacement of `<a`
+
+    Args:
+      contents (str): Text to show in the console
+      unique_name (str): Name with which to create the file that can be
+        downloaded. Should include its extension.
+      descriptor (str): String used to make unique section heading and id
+
+    Returns:
+      str: HTML of the tests' console output section with copyable text.
+    """
+
+    contents = contents or "No console logs"
+
+    da_file = DAFile()
+    da_file.initialize( filename=unique_name )
+    da_file.write( contents )
+    da_file.commit()
+
+    console = sections[ sections.number_gathered() ]
+    console.heading = f"{ descriptor } logs"
+    safe_descriptor = very_safe_name( descriptor )
+    console.id = f"{ safe_descriptor }_console_heading"
+  
+    console.download = download_file_button( da_file.url_for() )
+    console.copier = copier
+    console.menu = menu_download_n_copy( console )
+  
+    # Avoid abstracting navigation arrangement. Too coupled; jump functionality
+    # is in the header, but also spread around the edges of the section.
+    console.jump_id = f"{ safe_descriptor }_console_jump"
+    console.nav = to_section_bottom_button( console.jump_id )
+    console.to_top = to_section_top_button( console.jump_id )
+
+    html = f"""
+    <section id="{ safe_descriptor }_console" class="section console_output alkiln_copy">
+      <div id="{ console.jump_id }" class="jump_destination"></div>
+      { sticky_h2_header( console ) }
+      <pre class="visible_text">{ str( contents ).strip().replace("<a", "0000000").replace("</a", "1111111111").replace("<", "&lt;").replace("0000000", "<a").replace("1111111111", "</a") }</pre>
+      { console.to_top }
+    </section>
+    """
+
+    return html
+---
 # TODO: Move the headings (datetime, "Test run:", etc. to ALKiln)
 id: console output for console func
 need:
@@ -1810,7 +1825,7 @@ need:
 template: console_full_text
 content: |
   % if setup_output_for_the_console or test_run_output_for_console:
-  ALKiln setup and test run console output - ${ format_date(today(), format='E, dd MMM yyyy') } ${ format_time(current_datetime(), format='hh:mm:ss a z') }
+  ALKilnInThePlayground setup and test run console output - ${ format_date(today(), format='E, dd MMM yyyy') } ${ format_time(current_datetime(), format='hh:mm:ss a z') }
   
   % if setup_output_for_the_console:
   ${ setup_output_for_the_console }
@@ -1867,7 +1882,7 @@ code: |
       <div class="statuses">
         <span class="copy_default">Copy</span>
         <span class="copy_done">Copied!</span>
-        <span class="copy_canceled">Canceled copy</span>
+        <span class="copy_cancelled">Cancelled copy</span>
       </div>
     </button>
   </div>"""
@@ -1875,56 +1890,80 @@ code: |
 # TODO: Move to files helper section
 id: remove/delete files
 need:
+  - _add_and_log
+  - _add_and_debug
   - folder_path
-  - get_zip_path
+  - get_artifacts_zip_path
+  - delete_kip_session_dir
+  - format_error
 code: |
   # TODO: Ensure this block runs regardless of the outcome just in case it
   # can manage to clean something up. Avoid erroring. These steps aren't
   # crucial.
-  
-  zip_path = get_zip_path()["path"]
-  
+
+  removal_logs = []
+
+  _add_and_debug( removal_logs, "💡 INFO ALKP: Removing original artifacts files" )
+
+  removal_zip_path = get_artifacts_zip_path()["path"]
+
   import os
   try:
-    os.remove( zip_path )
-  except Exception as error:
-    _log(f'🖊️ ALKiln NOTE ALKP0008: skipped removing old "{ zip_path }". Message:')
-    _debug(error)
-  
+    os.remove( removal_zip_path )
+  except Exception as remove_zip_error:
+    _add_and_log( removal_logs, f'🖊️ NOTE ALKP0008: skipped removing old "{ removal_zip_path }".')
+    _add_and_log( removal_logs, format_error( remove_zip_error ))
+
   import shutil
   try:
     shutil.rmtree( folder_path )
-  except Exception as error:
-    _log(f'🖊️ ALKiln NOTE ALKP0009: skipped removing "{ folder_path }". Message:')
-    _debug(error)
-  
+  except Exception as remove_artifacts_error:
+    _add_and_log( removal_logs, f'🖊️ NOTE ALKP0009: skipped removing "{ folder_path }".')
+    _add_and_log( removal_logs, format_error( remove_artifacts_error ))
+
+  # TODO: Research whether we're deleting the connections of all server devs
   # https://stackoverflow.com/a/32949415/14144258
   import glob
   try:
     # Remove leftover puppeteer stuff if it exists (e.g. if the user
     # stopped the tests early)
     # https://github.com/puppeteer/puppeteer/issues/6414
-    sub_folders_list = glob.glob('tmp/puppeteer_dev_chrome_profile*')
-    for sub_folder in sub_folders_list:
+    # TODO: Check if handling background actions correctly
+    # prevents extra chrome processes from sticking around,
+    # letting us remove this potentially problematic code
+    removal_sub_folders_list = glob.glob('tmp/puppeteer_dev_chrome_profile*')
+    for sub_folder in removal_sub_folders_list:
       shutil.rmtree(sub_folder)
-  except Exception as error:
-    _debug(f'🖊️ ALKiln NOTE: skipped removing puppeteer leftovers. Maybe there were none. Message:')
-    _debug(error)
-  
+  except Exception as clean_puppeteer_error:
+    _add_and_log( removal_logs, f'🖊️ NOTE ALKP: skipped removing puppeteer leftovers. Maybe there were none. Message, if any:')
+    _add_and_log( removal_logs, format_error( clean_puppeteer_error ))
+
+  removal_delete_session_dir_data = delete_kip_session_dir()
+  _add_and_log( removal_logs, removal_delete_session_dir_data.get('logs', []) )
+
   remove_tmp_files = True
 ---
 event: show_output
+# Note: using [NO_EMOJIS] to avoid parsing of ":<text>:" from trying to turn into fontawesome icons. We sometimes have that in cucumber console output. It looks like you must do it for an entire page. All or none.
+# https://docassemble.org/docs/markup.html#emoji
 need:
   - logs_more_info
   - test_run_outcome_template
   - metadata_template
   - artifacts_errored
   - file_problem
+  - config_path
+  - config_path_problem
+  - folder_path
+  - folder_path_problem
   - test_output_template
+  - get_artifacts_zip_path
 prevent going back: True
 question: |
   ALKiln output
 subquestion: |
+  [NO_EMOJIS]
+  
   <div id="alkiln_test_output">
 
   ${ test_run_outcome_template }
@@ -1945,11 +1984,7 @@ subquestion: |
   ${ folder_path_problem }
   % endif
 
-  % if get_zip_path()["path"] is None:
-  ${ get_zip_path()["problem"] }
-  % endif
-
-  The installed version of ALKiln did not create any files. ${ logs_more_info }
+  This test run did not create any files. ${ logs_more_info }
   </div>
 
   % else:
@@ -1959,10 +1994,15 @@ subquestion: |
   ${ test_output_template }
   </div>
 
-  ${ "" if remove_tmp_files else "" }
-# Keep exit button to give the page the #daform selector as da bases some styles on that selector
+# Research: After `if folder_path is None`, was this giving an inaccurate message because zip is already erased?
+# 
+#   % if get_artifacts_zip_path()["path"] is None:
+#   ${ get_artifacts_zip_path()["problem"] }
+#   % endif
+
 buttons:
-  - Exit: exit
+  # Keep exit button to give the page the #daform selector as da bases some styles on that selector
+  - Exit: exit  # TODO: Exit to server? Check.
 action buttons:
   - label: Run new tests
     action: do_skip_install_session
@@ -2034,13 +2074,15 @@ content: |
 # Discuss: If we've thoroughly dealt with the final output page regeneration
 # bug, add date/time of test run? Is the info in the console output enough?
 template: metadata_template
+need:
+  - server_alkiln_version
 content: |
   <section id="metadata" class="section metadata">
 
     <ddl class="container">
       <div class="version row justify-content-between">
         <dt class="col-6">ALKiln version</dt>
-        <dd class="col-6">${ get_installed_version() }</dd>
+        <dd class="col-6">${ server_alkiln_version }</dd>
       </div>
       <div class="version row justify-content-between">
         <dt class="col-6">ALKilnInThePlayground version</dt>
@@ -2052,12 +2094,23 @@ content: |
         <dd class="col-6">${ tag_expression or "No tag expression" }</dd>
       </div>
   
-      % if defined('test_start_time'):
-      <div class="elapsed_time row justify-content-between">
+      <div class="elapsed_time test_time row justify-content-between">
         <dt class="col-6">Elapsed time</dt>
+        % if defined('test_start_time'):
         <dd class="col-6">${ str(date_difference( ending=end_time, starting=test_start_time ).delta) }</dd>
+        % else:
+        <dd class="col-6">Unknown</dd>
+        % endif
       </div>
-      % endif
+  
+      <div class="elapsed_time artifacts_time row justify-content-between">
+        <dt class="col-6">Artifacts creation time</dt>
+        % if defined('artifacts') and defined('artifacts.action.end_time'):
+        <dd class="col-6">${ str(date_difference( ending=artifacts.action.end_time, starting=artifacts.action.start_time ).delta)[:-3] }</dd>
+        % else:
+        <dd class="col-6">Unknown</dd>
+        % endif
+      </div>
     </dl>
     
   </section>
@@ -2129,6 +2182,7 @@ code: |
 ---
 # We get the folder_path by using ALKiln's runtime_config.json
 # folder_path tries different locations till it finds the real one in order to stay compatibile with old ALKiln versions. See `get_existing_path()` notes. We use `folder_path` to get the artifacts folder to make zip names, zips, and to eventually delete the folder.
+# Discuss: Move to files.yml? A new file - paths.yml? names.yml?
 id: artifacts folder name
 need:
   - config_path
@@ -2185,10 +2239,11 @@ need:
 code: |
   zip_name = f"{ zip_name_no_ext }.zip"
 ---
+# TODO: Move to files.yml? Rename to "paths.yml"?
 need:
   - zip_name
 code: |
-  def get_zip_path():
+  def get_artifacts_zip_path():
     """
     Confirm the existence of the artifacts folder zip file and get its true
         name. Alternatively, explain what went wrong.
@@ -2314,7 +2369,48 @@ code: |
     _log(f'🖊️ ALKiln NOTE: Found no "{ file_name }", "{ root_path }/{ file_name }", or "/tmp/{ file_name }" file')
     return None
 ---
+need:
+  - root_path
+  - alkiln_session_id
+  - format_error
+  - _add_and_log
+  - _add_and_debug
+id: remove alkip session folder
+code: |
+  def delete_kip_session_dir( filepath ):
+    """
+    Try to delete the ALKiP session folder.
+
+    Discuss: Use an argument instead of vars?
+  
+    Returns:
+      dict:
+        ok (bool): False if there was an error. Else True.
+        logs ([str]): Any messages about the operation.
+    """
+    import shutil
+
+    logs = []
+    filepath = filepath or f'{ root_path }/{ alkiln_session_id }'
+  
+    try:
+      # Remove ALKiP session vars file
+      shutil.rmtree( filepath )
+      _add_and_debug( logs, [f'🐛 INFO ALKP: Removed { filepath }'])
+  
+    except Exception as delete_session_dir_error:
+      message1 = f'🖊️ ALKiln NOTE: skipped removing "{ root_path }/{ alkiln_session_id }".'
+      message2 = format_error( delete_session_dir_error )
+      _add_and_debug( logs, [ message1 ])
+      _add_and_debug( logs, [ message2 ])
+      return { "ok": False, "logs": logs }
+  
+    return { "ok": True, "logs": [] } 
+---
+---
+# ##################################
 # Buttons
+# ##################################
 ---
 need:
   - action_button_html
@@ -2403,7 +2499,9 @@ id: jumper bottom html suffix to avoid future maintenance problems
 code: |
   jumper_bottom_suffix = "_bottom"
 ---
+# ##################################
 # Misc
+# ##################################
 ---
 id: very strict name sanitization
 code: |
@@ -2417,7 +2515,7 @@ code: |
     Returns:
         str: A string with only alphanumeric chars and underscores.
     """
-    return re.sub(r"[^A-z0-9_]", "_", uncertain_str)
+    return re.sub(r"[^A-z0-9_]", "_", str( uncertain_str ))
 ---
 ---
 id: check command existence
@@ -2437,11 +2535,14 @@ code: |
     return cmd_exists
 ---
 # ##################################
-# Dynamic
+# Dynamic values (potentialy recalculate)
 # ##################################
+# "Dynamic values" is every other value, I believe. Instead, move
+# code to colocate with related code.
 ---
 # ⚠️ Doing this with a function takes waaaay longer
 # Discuss: Should `if matches == None:` be an error path instead?
+# TODO: Move to version number calculations?
 
 # Sets string to print for the version number or an error message with
 #   'Could not get'.
@@ -2476,6 +2577,7 @@ code: |
     _debug(packages.stdout.decode())
     pattern = re.compile(r'suffolklitlab/alkiln@(\d.*)$')
     matches = re.search(pattern, packages.stdout.decode())
+    # Discuss: Should `if matches == None:` be an error path?
     if matches == None:
       server_version = "Could not get this server's version of ALKiln. It seems to be missing. Install a version of ALKiln to continue."
     else:
@@ -2486,11 +2588,35 @@ code: |
   server_alkiln_version = server_version
 ---
 ---
+# ##################################
 # Defaults
+# ##################################
+---
+# Dynamic defaults (set once)
+---
+id: id of this alkiln test run interview
+need:
+  - very_safe_name
+  - timey
+code: |
+  alkiln_session_id = f"""alkiln_{ very_safe_name(timey()) }_{ current_context().session }"""
+---
+id: path to file containing alkip json for session
+need:
+  - root_path
+  - alkiln_session_id
+  - kip_session_filename
+code: |
+  kip_vars_path = f"{ root_path }/{ alkiln_session_id }/{ kip_session_filename }"
+---
+# Hard-coded defaults
 ---
 code: |
   root_path = "/tmp"
 ---
+id: name of kip runtime vars
+code: |
+  kip_session_filename = "alkip_runtime.json"
 ---
 # ##################################
 # `include`s with defaults

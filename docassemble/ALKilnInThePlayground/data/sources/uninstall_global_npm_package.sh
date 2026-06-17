@@ -50,5 +50,5 @@ fi
 
 # Clean up unused dependencies. Can't hurt.
 npm prune --loglevel=verbose
-echo "💡 ALKP0050 INFO [$(date)]: Pruned ALKiln's dependencies."
+echo "💡 ALKP0048 INFO [$(date)]: Pruned ALKiln's dependencies."
 exit $exit_code

@@ -12,11 +12,16 @@
 # func2
 # dep1 (shared by func1 and func 2)
 ---
+features:
+  css:
+    - fidget.css
+---
 include:
   - logs.yml
   - files.yml
   - headers.yml
   - background_actions_wrappers.yml
+  - process_helpers.yml
 ---
 # ##################################
 # Sections possible for each background action and wrappers:
@@ -141,16 +146,22 @@ event: re_check_npm_connection
 code: |
   npm.action.undefine
 ---
+id: npm action follow-up code
+code: |
+  npm.action.followup = True
+---
 # Screens (npm connection)
 ---
+# Discuss: abstract 'elapsed time' html into action wrapper
 # Discuss: Should `.wait` belong to `.ui` or `.action`? Maybe `.ui` should be kept for definitely persistent values. Maybe it should be called `.persistent`
 # Discuss: Should all screens be in the main file?
+# TODO: for upstream, repro bug where over 5-second wait or when coming back to this page from the 'choose project' page, the fontawesome :plug: (and the html version) disappears. Videos 2026/06/17 before 9:10am. https://codepen.io/plocket/pen/ByppadK.
 id: npm html wait screen
 event: npm.action.wait
 prevent going back: True
 reload: 5
 question: |
-  :plug: One sec, checking the connection to the servers that store ALKiln
+  <i class="fa-solid fa-plug"></i> One sec, checking the connection to the servers that store ALKiln
 subquestion: |
   <div class='spinner-container d-flex justify-content-center'>
   <div class='spinner-border' role='status'>
@@ -158,7 +169,7 @@ subquestion: |
   </div>
   </div>
   
-  This is supposed to take no more than about 15 seconds.
+  This is supposed to take no more than about 30 seconds.
 
   In future, ALKiln developers plan to change the order of these operations so that you will have the option to go straight to running your tests.
 
@@ -281,33 +292,243 @@ code: |
 # ##################################
 # ALKiln Installation
 # ##################################
+# Note: Installing takes about 30 seconds atm. Keep as background task as opposed to foreground.
+---
+# Unique wrapper: Dynamic (installing alkiln)
+---
+id: install alkiln task
+need:
+  - version_to_install
+  - kip_vars_path
+code: |
+  install.action.task = background_action('install_alkiln', None, version=version_to_install, kip_session_path=kip_vars_path)
 ---
 # Unique action: Lifecycle (installing alkiln)
-# At least task, action, and failure
+id: install alkiln background action
+event: install_alkiln
+need:
+  - _debug
+  - _add_and_log
+  - format_error
+  - worker_log_link
+  - has_started_alkiln_install
+  - run_process_with_canceler
+  - install_alkiln_bash_file
+  - made_npm_dir_successfully
+  - install.action.task_data
+  - install.action.cancel_key
+code: |
+  # Discuss: How do we detect if someone _else_ on the server didn't properly finish installing ALKiln and that there will be cache problems?
+  
+  background_error_action('fail_install_action')
+
+  kip_session_path = action_argument('kip_session_path')
+
+  general_err_log = f'''🤕 ALKiP ERROR: ALKilnInThePlayground ran into an error when
+  it was trying to install ALKiln. Look above for more details
+  and check your { worker_log_link }.'''
+
+  install_start_ok = True
+  if not made_npm_dir_successfully:
+    install_start_ok = False
+
+  # Run install only once
+  if has_started_alkiln_install:
+    # Examples: ALKiP devs forgot to define a var before running, so the task got retriggered
+    install_start_ok = False
+    install.action.task_data['repeated'] = True
+    _add_and_log( install.action.task_data['logs'], [f'''ALKilnInThePlayground tried to re-run the `install_alkiln` task. This may be an internal ALKilnInThePlayground problem. Look in your { worker_log_link } for more clues.'''] )
+
+  if not install_start_ok:
+    # @@@TODO: Stop subprocess if already running. Operations are synchronous, but The Loop isn't. Basically, set cancel and we may need to add another flag. Better to let it finish running?
+    install.action.task_data['ok'] = False
+    _add_and_log( install.action.task_data['logs'], [ general_err_log ])
+    background_response( install.action.task_data )
+
+  # Must install with npm version, not GitHub branch as we don't know a simple way to get the
+  # npm version from the branch installation (to help the user install the right version) or,
+  # alternatively, avoid installing anything unnecessary. On GitHub, though, we hope to use
+  # the branch or commit as the source of truth for our version. This unfortunately means
+  # there can't be just one source of truth for which version of ALKiln a server is using.
+  
+  # =====================
+  # Run the install
+  # =====================
+
+  install_process_data = {}
+  to_run = [
+    'bash', install_alkiln_bash_file.path(),
+    '@suffolklitlab/alkiln', action_argument('version')
+  ]
+  
+  try:
+    has_started_alkiln_install = True
+    install_process_data = run_process_with_canceler(
+      to_run,
+      cancel_key=install.action.cancel_key,
+      json_path=kip_session_path,
+      descriptor='install ALKiln',
+      max_seconds=float( 60 * 2 ),
+      custom_env_vars=dict( NPM_CONFIG_PREFIX='/var/www/.npm-global' )
+    )
+  
+    _debug(f'''🐛 ALKiP INFO: Finished running ALKiln installation''')
+    install.action.task_data['logs'].extend( install_process_data.get('logs', []) )
+
+  except Exception as install_process_error:
+    _add_and_log( install.action.task_data['logs'], [ format_error( install_process_error ), general_err_log ])
+
+  install.action.task_data['ok'] = install_process_data.get('ok', False )
+  install.action.task_data['interrupted'] = install_process_data.get('interrupted', False )
+  
+  background_response( install.action.task_data )
+---
+event: fail_install_action
+need:
+  - _log
+code: |
+  fail_install_action_msg = f'''
+  { action_argument('error_type') } { action_argument('error_message') }: { action_argument('error_trace') }
+  Docassemble was looking for these variables:
+  { action_argument('variables') }
+  '''
+  _log( fail_install_action_msg )
+  background_response({
+    'ok': False,
+    'repeated': False,
+    'interrupted': False,
+    'logs': [ fail_install_action_msg ]
+  })
+---
+event: install.action.cancel
+need:
+  - kip_vars_path
+  - save_kip_runtime_vars
+  - _debug
+code: |
+  _debug('💡 ALKiP INFO: Cancelling installation')
+  install.action.phase = 'cancelled'
+  install.ui.cancelled = True
+  save_kip_runtime_vars({ install.action.cancel_key: True }, kip_vars_path )
+---
+id: install action follow-up code
+need:
+  - delete_kip_session_dir
+  - root_path
+  - alkiln_session_id
+code: |
+  delete_kip_session_dir(f'{ root_path }/{ alkiln_session_id }')
+  install.action.followup = True
 ---
 # Screens (installing alkiln)
-# Optional
+# Discuss: Should some or all screens be in a different document?
+---
+id: wait page for alkiln install
+# Discuss: Should `.wait` belong to `.ui` or `.action`? Maybe `.ui` should be kept for definitely persistent values. Maybe it should be called `.persistent`
+event: install.action.wait
+reload: 5
+prevent going back: True
+need:
+  - install.ui.cancelled
+question: |
+  One mo, installing ALKiln v${ version_to_install }
+subquestion: |
+  <div class='spinner-container d-flex justify-content-center'>
+  <div class='spinner-border' role='status'>
+    <span class='visually-hidden'>Installing...</span>
+  </div>
+  </div>
+
+  <div class='alert alert-danger' markdown='1'>
+  ${ avoid_stopping_install_warning }
+  </div>
+  
+  This often takes less than a minute, though it can take longer if your server is slow or the servers that store ALKiln are slow.
+  
+  :clock: **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install.action.start_time ).delta) }**[BR]
+  (Updates about every 5 seconds depending on your server speed)
+
+  % if install.ui.cancelled:
+  <div class='alert alert-info' markdown=1>We promise, your server is working on cancelling your installation. These things can take time! Here's a button you can press if that helps, though it doesn't do much `¯\_(ツ)_/¯`</div>
+  <div id='frustration'>
+  ${ action_button_html('javascript:console.log(`Well sure, it does this too. You got me.`); $(`#frustration_result`)[0].style.display=`block`;', label='Hurry up!', color='danger', size='md') }
+  </div>
+  <div id='frustration_result' style='display: none;'>Ok, it does do a little more. That's all, though.</div>
+  
+  % endif
+
+action buttons:
+  - label: Cancel and try again
+    action: install.action.cancel
+    icon: fire
+    color: danger
+    show if: not install.ui.cancelled
 ---
 # Action-needed values: Dynamic (installing alkiln)
-# Optional
+---
+id: make npm dir if needed
+need:
+  - _log
+code: |
+  from pathlib import Path
+  try:
+    npm_dir = Path( '/var/www/.npm-global' )
+    npm_dir.mkdir( parents=True, exist_ok=True )
+    made_npm_dir_successfully = True
+  except Exception as make_npm_dir_error:
+    _log(f'''🤕 ALKiP ERROR: Unable to make the directory '/var/www/.npm-global'.''')
+    made_npm_dir_successfully = False
 ---
 # Action-needed values: Defaults (installing alkiln)
 # Optional
 ---
 # Action-needed values: Hard-coded (installing alkiln)
-# Optional
+---
+objects:
+  - install_alkiln_bash_file: DAStaticFile.using(filename='data/sources/install_global_npm_package.sh')
 ---
 # Wrapper state: Dynamic (installing alkiln)
 # TODO: Unnecessary now? Check once we have the other actions
 ---
 # Wrapper state: Defaults (installing alkiln)
-# Optional
+---
+id: has_started_alkiln_install default
+# TODO: replace with x.action.did_start
+code: |
+  has_started_alkiln_install = False  # Default
 ---
 # Wrapper values: Hard-coded (installing alkiln)
-# Required
+---
+id: install task description
+code: |
+  install.ui.description = 'install ALKiln'
+---
+id: cancel key for install task
+code: |
+  install.action.cancel_key = 'cancel_install'  # session config val
+---
+id: installation must be successful to continue
+code: |
+  install.action.continue_on_failure = False
 ---
 # Wrapper values: Set once (installing alkiln)
-# Optional
+---
+# Externally shared values: Hard-coded (installing alkiln)
+# Discuss: This is shared with another file, not in here. Which file should the warning template go in?
+---
+id: stop install warning template
+template: avoid_stopping_install_warning
+content: |
+  While ALKiln is installing **try very hard to avoid**:
+
+  - Cancelling the installation
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Otherwise causing this server to reload, restart, or stop
+
+  Stopping in the middle might cause an invalid installation. If that happens, you will most likely have to clean up the invalid installation, which can sometimes be troublesome.
+
+  Instead, you can wait till the installation finishes and then install a different version.
 ---
 ---
 ---
@@ -426,6 +647,10 @@ code: |
     'result': {},
     'logs': [ fail_artifacts_action_msg ]
   })
+---
+id: artifacts action follow-up code
+code: |
+  artifacts.action.followup = True
 ---
 # Screens (artifacts)
 ---
@@ -714,7 +939,7 @@ need:
   - folder_name
   - zip_name_no_ext
   - zip_name
-  - get_zip_path
+  - get_artifacts_zip_path
 code: |
   import subprocess
   
@@ -773,7 +998,7 @@ code: |
     if zipping_did_error:
       return zip_not_found_html
   
-    zip_path = get_zip_path()['path']
+    zip_path = get_artifacts_zip_path()['path']
   
     if zip_process.stdout:
       _debug(f'💡 ALKiP INFO: saved the artifacts zip file correctly to "{ zip_path }". stdout:')

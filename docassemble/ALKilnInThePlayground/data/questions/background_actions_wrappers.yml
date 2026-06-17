@@ -1,6 +1,6 @@
 ---
 # Abstraction of logic that I commonly wrap around background actions
-# Includes cancel-able actions
+# Includes cancellable actions
 ---
 ---
 include:
@@ -48,7 +48,7 @@ code: |
   )):
     x.action.fail
   # Discuss: Tell the user about just cancellation, just other failure, or both?
-  if x.ui.canceled or x.ui.failed:
+  if x.ui.cancelled or x.ui.failed:
     # Discuss: Log logs here? Or log upstream after?
     x.action.undefine
 
@@ -59,6 +59,10 @@ code: |
   # to skip running this block. I think.
   elif x.action.phase != 'succeeded':
     x.action.succeed
+
+  # Discuss: Place the followup right after the action completion
+  # Discuss: Different stages of "followoup" - followup, clean, wrapup, ...?
+  x.action.followup
 
   x.action.run = True
 ---
@@ -94,7 +98,7 @@ code: |
   )):
     x.action.fail
   # Discuss: Tell the user about just cancellation, just other failure, or both?
-  if x.ui.canceled or x.ui.failed:
+  if x.ui.cancelled or x.ui.failed:
     # Discuss: Log logs? Or log upstream after?
     pass
 
@@ -106,6 +110,10 @@ code: |
   elif x.action.phase != 'succeeded':
     x.action.succeed
 
+  # Discuss: Place the followup right after the action completion
+  # Discuss: Different stages of "followoup" - followup, clean, wrapup, ...?
+  x.action.followup
+
   x.action.run = True
 ---
 ---
@@ -114,7 +122,7 @@ code: |
 event: x.action.set_state_on_start
 generic object: DAObject
 code: |
-  x.ui.canceled = False
+  x.ui.cancelled = False
   x.ui.failed = False
   x.action.phase = 'running'
   reconsider(x.action.attr_name('start_time'))
@@ -173,7 +181,7 @@ code: |
 ---
 generic object: DAObject
 code: |
-  x.ui.canceled = None
+  x.ui.cancelled = None
 ---
 generic object: DAObject
 code: |

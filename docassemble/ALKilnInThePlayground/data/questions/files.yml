@@ -183,6 +183,8 @@ code: |
     return dir_Path
 ---
 id: get or make file at path
+need:
+  - ensure_dir_exists
 code: |
   def ensure_file_exists( filepath, default_value="" ):
     """
