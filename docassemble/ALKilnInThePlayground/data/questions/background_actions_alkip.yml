@@ -44,11 +44,8 @@ include:
 # Action-needed values: Hard-coded (action description)
 # Optional
 ---
-# Wrapper state: Dynamic (action description)
-# At least failure
----
 # Wrapper state: Defaults (action description)
-# Optional
+# Optional (standard state vars are in the wrapper)
 ---
 # Wrapper values: Hard-coded (action description)
 # Required
@@ -169,7 +166,7 @@ subquestion: |
   </div>
   </div>
   
-  This is supposed to take no more than about 30 seconds.
+  This is supposed to take less than about 30 seconds.
 
   In future, ALKiln developers plan to change the order of these operations so that you will have the option to go straight to running your tests.
 
@@ -264,11 +261,8 @@ code: |
 # Action-needed values: Hard-coded (npm connection)
 # None
 ---
-# Wrapper state: Dynamic (npm connection)
-# TODO: Unnecessary now? Check once we have the other actions
----
 # Wrapper state: Defaults (npm connection)
-# None
+# None (standard state vars are in the wrapper)
 ---
 # Wrapper values: Hard-coded (npm connection)
 ---
@@ -417,7 +411,7 @@ need:
   - root_path
   - alkiln_session_id
 code: |
-  delete_kip_session_dir(f'{ root_path }/{ alkiln_session_id }')
+  delete_kip_session_dir(filepath=f'{ root_path }/{ alkiln_session_id }')
   install.action.followup = True
 ---
 # Screens (installing alkiln)
@@ -487,10 +481,8 @@ code: |
 objects:
   - install_alkiln_bash_file: DAStaticFile.using(filename='data/sources/install_global_npm_package.sh')
 ---
-# Wrapper state: Dynamic (installing alkiln)
-# TODO: Unnecessary now? Check once we have the other actions
----
 # Wrapper state: Defaults (installing alkiln)
+# (standard state vars are in the wrapper)
 ---
 id: has_started_alkiln_install default
 # TODO: replace with x.action.did_start
@@ -537,31 +529,272 @@ content: |
 # ##################################
 ---
 # Unique action: Lifecycle (test run)
-# At least task, action, and failure
+---
+need:
+  - tag_expression
+  - kip_vars_path
+  - project_name
+code: |
+  # Discuss: neccessary to pass it down this way? Is it enough to just `need` the value? Is it good to be explicit anyway?
+  tests.action.task = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name, kip_session_path=kip_vars_path)
+---
+id: run alkiln
+event: run_alkiln
+# TODO: Put some logs under _debug or _add_and_debug.
+need:
+  - _add_and_log
+  - worker_log_link
+  - has_started_tests  # TODO: Replace with .action.did_start
+  - tests.action.cancel_key
+  - tests.action.task_data
+  - tests.ui.description
+  - env_vars  # Use external custom_env_vars here?
+  - sources
+  - run_process_with_canceler
+code: |
+  from docassemble.webapp.files import SavedFile
+
+  background_error_action("fail_tests_action")
+  # Re-reproduce with new v: With a shortened timeout, when the process times out chrome closes, but node doesn't for ~50 sec more. Less than the full test, but still seems long.
+
+  # ------------- Guard the action -------------
+
+  # `if` statement for idempotency - ensure tests are only run once
+  # TODO: Stop subprocess if already running. Operations are synchronous, but The Loop isn't. Basically, set cancel and we may need to add another flag.
+  if has_started_tests:
+    _add_and_log(
+      tests.action.task_data['logs'],
+      [f"""🔎 ALKiP WARNING: Tried to re-run the { tests.ui.description } task. Docassemble was seeking `{ current_context().variable }`. Your { worker_log_link } may have more info."""]
+    )
+    background_response({
+      'ok': False,
+      'repeated': True,
+      'interrupted': tests.action.task_data.get('interrupted', False),
+      'logs': tests.action.task_data.get('logs', []),
+    })
+
+  # ------------- Setup -------------
+  
+  # Ensure that files in the 'sources' folder of all projects are
+  # cached in /tmp for S3 and such server configurations so that
+  # alkiln can get them there. They should be there for 2hrs at least.
+  # It's not possible to just pick one project.
+  # From https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/create_package.py#L14-L17
+  SavedFile(user_info().id, fix=True, section='playgroundsources')
+
+  sources_arg = f'--sources={ sources }'
+  _add_and_log( tests.action.task_data['logs'], f"""💡 ALKiP INFO: sources path: { sources }""")
+
+  tags = action_argument('tag_expression')
+  kip_session_path = action_argument('kip_session_path')
+
+  # `.communicate()` `timeout` is in seconds
+  # 60 seconds * 60 minutes * 6 hours
+  timeout_env_var_name = 'ALKILN_MAX_SECONDS_FOR_PLAYGROUND_TEST_RUN'
+  # Discuss: Is it possible to do this without `env_vars` nicely?
+  max_seconds = env_vars.get(
+    timeout_env_var_name,
+    60 * 60 * 6
+  )
+  max_seconds = float( max_seconds )
+
+  # Make sure not to pass an empty string for tags as that results in
+  # a "@" with no value after it in ALKiln.
+  if tags != '':
+    to_run = ['/var/www/.npm-global/bin/alkiln-run', tags, sources_arg]
+  else:
+    to_run = ['/var/www/.npm-global/bin/alkiln-run', sources_arg]
+
+  # Prepare the environment variables
+  custom_env_vars = dict(
+    SERVER_URL=f'{url_of("root", _external=True)}',
+    _ORIGIN='playground',
+    _ALKILN_ORIGIN='playground',
+    _PROJECT_NAME=action_argument('project_name'),
+    _ALKILN_PROJECT_NAME=action_argument('project_name'),
+    _USER_ID=f'{user_info().id}',
+    _ALKILN_USER_ID=f'{user_info().id}',
+    _TAGS=action_argument('tag_expression'),
+    # Only need these in GitHub
+    REPO_URL="X",
+    BRANCH_NAME="X",
+    DOCASSEMBLE_DEVELOPER_API_KEY="X"
+  )
+  
+  # ------------- Run tests -------------
+  
+  # Ensure tests don't re-run, even (especially) if they error
+  has_started_tests = True
+  tests_process_data = {}
+    
+  try:
+    tests_process_data = run_process_with_canceler(
+      to_run,
+      cancel_key=tests.action.cancel_key,
+      json_path=kip_session_path,
+      descriptor="ALKiln tests",
+      custom_env_vars=custom_env_vars,
+      max_seconds=max_seconds,
+      timeout_env_var_name=timeout_env_var_name
+    )
+    _debug(f"""💡 ALKiP INFO: Finished running ALKiln tests""")
+    tests.action.task_data['logs'].extend( tests_process_data.get('logs', []) )
+
+  except Exception as tests_process_error:
+    general_err_log = f"""🤕 ALKiP ERROR ALKP0010: ALKilnInThePlayground ran into an error
+    when it was trying to run ALKiln tests. This is different than
+    interview tests failing. Look above for more details and check
+    your { worker_log_link }."""
+    _add_and_log( tests.action.task_data['logs'], [ format_error( tests_process_error ), general_err_log ])
+
+  tests.action.task_data['ok'] = tests_process_data.get('ok', False)
+  tests.action.task_data['interrupted'] = tests_process_data.get('interrupted', False)
+  
+  background_response( tests.action.task_data )
+---
+id: tests action follow-up code
+need:
+  - delete_kip_session_dir
+  - root_path
+  - alkiln_session_id
+code: |
+  delete_kip_session_dir(filepath=f'{ root_path }/{ alkiln_session_id }')
+  tests.action.followup = True
 ---
 # Screens (test run)
-# Optional
+---
+prevent going back: True
+event: tests.action.wait
+reload: 5
+need:
+  - tests.ui.cancelled
+question: |
+  :flask-vial: Hang tight, ALKiln is running the tests
+subquestion: |
+  <div class="spinner-container d-flex justify-content-center">
+  <div class="spinner-border" role="status">
+    <span class="visually-hidden">Running tests...</span>
+  </div>
+  </div>
+
+  <div class="alert alert-warning" markdown="1">
+  While tests are running try to avoid:
+  
+  - Editing this project
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Otherwise causing this server to reload, restart, or stop
+  
+  Otherwise, tests might fail and you may have to rerun them.
+  </div>
+  
+  :clock: **Elapsed time: ${ str( date_difference( ending=current_datetime(), starting=tests.action.start_time ).delta ) }**[BR]
+  (Updates about every 5 seconds depending on your server speed)
+  
+  % if tests.ui.cancelled:
+  <div class="alert alert-info" markdown=1>The tests are trying to stop, honest. They really are doing their best. Here's yet another button. It won't do much, but it might help you feel better `(͡◵ Ĺ̯ ͡◵ )`</div>
+  <div id="frustration">
+  ${ action_button_html("javascript:console.log(`Aaaand it also does this. Can't pull one over on you! I should know better by now.`); $(`#frustration_result`)[0].style.display=`block`; $(`#frustration .btn`)[0].textContent += ` Go!`;", label="Go!", color="danger", size="md""") }
+  </div>
+  <div id="frustration_result" style="display: none;">Yeah, it does do this stuff. That's all, though.</div>
+  % endif
+action buttons:
+  - label: Stop tests early
+    action: tests.action.cancel
+    icon: window-close
+    color: danger
+    show if: not tests.ui.cancelled
 ---
 # Action-needed values: Dynamic (test run)
-# Optional
+---
+# Want to keep this private. Avoid putting this in  an action arg
+#  so da doesn't log it.
+id: sources path
+need:
+  - root_path
+  - project_name
+code: |
+  if get_config("s3").get("enable", False):
+    sources = f"{ root_path }/playgroundsources/{ user_info().id }/{ project_name }"
+  else:
+    sources = f"/usr/share/docassemble/files/playgroundsources/{ user_info().id }/{ project_name }"
 ---
 # Action-needed values: Defaults (test run)
-# Optional
+---
+if:
+  - not_wants_tags
+code: |
+  tag_expression = ''
 ---
 # Action-needed values: Hard-coded (test run)
-# Optional
 ---
-# Wrapper state: Dynamic (test run)
-# TODO: Unnecessary now? Check once we have the other actions
+event: tests.action.cancel
+need:
+  - kip_vars_path
+  - save_kip_runtime_vars
+  - _debug
+code: |
+  _debug("💡 ALKiP INFO: Cancelling tests")
+  tests.action.phase = 'cancelled'
+  tests.ui.cancelled = True
+  save_kip_runtime_vars({ tests.action.cancel_key: True }, kip_vars_path )
+---
+event: fail_tests_action
+need:
+  - _debug
+code: |
+  # Discuss: Make a custom error action for non-idempotency
+  fail_tests_action_msg = f"""
+  { action_argument("error_type") } { action_argument("error_message") }: { action_argument("error_trace") }
+  Docassemble was looking for these variables:
+  { action_argument("variables") }
+  """
+  _debug( fail_tests_action_msg )
+  # I think `.failed()` will be True. Test this :(
+  background_response({
+    "ok": False,
+    "repeated": False,
+    "interrupted": False,
+    "logs": [ fail_tests_action_msg ],
+  })
 ---
 # Wrapper state: Defaults (test run)
-# Optional
+# (standard state vars are in the wrapper)
+---
+# TODO: Replace with .action.did_start
+code: |
+  has_started_tests = False
 ---
 # Wrapper values: Hard-coded (test run)
-# Required
+---
+id: tests task description
+code: |
+  tests.ui.description = 'ALKiln tests'
+---
+id: tests can continue on failure
+code: |
+  tests.action.continue_on_failure = True
+---
+id: cancel key for tests task
+code: |
+  tests.action.cancel_key = 'cancel_tests'  # session config val
 ---
 # Wrapper values: Set once (test run)
-# Optional
+---
+id: version of alkiln used for the test run
+# TODO: This might belong in the main file
+need:
+  - nice_time
+  - _debug
+code: |
+  tests.action.version = server_alkiln_version
+  _debug(f"💡 ALKiP INFO { nice_time() }: Version of ALKiln for session ID { current_context().session or 'UNKNOWN' } is v{ tests.action.version }")
+---
+id: elapsed time for test run
+reconsider: True
+code: |
+  # Deliberately explicit about the end time
+  tests_elapsed_time = date_difference( ending=current_datetime(), starting=tests.action.start_time )
 ---
 ---
 ---
@@ -677,20 +910,6 @@ subquestion: |
 # An experiment in reducing the number of functions we use
 objects:
   - sections: DAList.using( object_type=DAObject, complete_attribute='header' )
----
-need:
-  - folder_path
-code: |
-  if folder_path == None:
-    files_html = ''
-    test_run_outcome = None
-    file_problem = True
-  else:
-    tests_data = get_files_html( folder_path )
-    files_html = tests_data['html']
-    test_run_outcome = tests_data['outcome']
-    file_problem = False
-  run_get_files_html = True
 ---
 code: |
   file_problem = False
@@ -904,7 +1123,7 @@ code: |
 ---
 id: top buttons
 need:
-  - make_and_get_artifacts_zip_downloader  # internal
+  - artifacts_zip_downloader  # internal
 code: |
   import subprocess
   
@@ -913,12 +1132,11 @@ code: |
     Returns:
       str: the top-most functional buttons HTML for the results page
     """
-    zip_html = make_and_get_artifacts_zip_downloader()
 
     html = f'''
       <section class='section top_buttons'>
         <div class='quick_buttons top'>
-          { zip_html }
+          { artifacts_zip_downloader }
   
           <nav class='to_console_logs_from_top'>
             <a class='non_da_internal_link btn btn-secondary' href='#console' markdown='1' type='button'><i class='fa-solid fa-arrows-down-to-line'></i> Jump down to the full console logs</a>
@@ -930,33 +1148,37 @@ code: |
 
     return html
 ---
-id: zip section
+id: zip section  # internal
 need:
-  # All dependencies are shared by other functionality  # internal
   - da_log_more_info
   - root_path
   - folder_path
   - folder_name
   - zip_name_no_ext
   - zip_name
-  - get_artifacts_zip_path
+  - format_error
+  - artifacts_zip_path_original
 code: |
   import subprocess
   
-  def make_and_get_artifacts_zip_downloader():
+  def get_artifacts_zip_downloader():
     """
     Returns:
         str: the zip download button HTML for the artifacts folder
     """
 
+    _debug(f'''💡 INFO ALKP: will try to get the artifacts zip from "{ folder_path }" (in "{ root_path }") and save the artifacts zip with the name "{ zip_name }".''' )
+  
     zip_not_found_html = f'''
         <div class='alkiln_error alert alert-warning'>ALKilnInThePlayground was unable to create a zip file for the test artifacts. Sorry about that. You might find more clues on this page. { da_log_more_info }</div>\n
       '''
 
     if zip_name == None:
       return zip_not_found_html
-
-    _debug(f'💡 ALKiP INFO: will try to get the artifacts zip from "{ folder_path }" (in "{ root_path }") and save the artifacts zip with the name "{ zip_name }".' )
+    if artifacts_zip_path_original == None:
+      return zip_not_found_html
+  
+    _debug(f'''💡 INFO ALKP: will try to get the artifacts zip from "{ folder_path }" (in "{ root_path }") and save the artifacts zip with the name "{ zip_name }".''' )
 
     # TODO: Remove zip_name_no_ext if possible. `zip` cmd doesn't need it.
 
@@ -975,43 +1197,45 @@ code: |
         returncode = zip_process.returncode
 
         if returncode == 12:
-          _log( f'🤕 ALKiP ERROR: when trying to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }", the zip command was unable to find the file or directory. Return code "{ zip_process.returncode }" ("zip has nothing to do").' )
+          _log( f'🤕 ERROR ALKP: when trying to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }", the zip command was unable to find the file or directory. Return code "{ zip_process.returncode }" ("zip has nothing to do").' )
         elif returncode == 15:
-          _log( f'🤕 ALKiP ERROR: when trying to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }", the zip command was unable to create a file to write to. Return code "{ zip_process.returncode }".' )
+          _log( f'🤕 ERROR ALKP: when trying to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }", the zip command was unable to create a file to write to. Return code "{ zip_process.returncode }".' )
   
         else:
-          _log( f'🤕 ALKiP ERROR ALKP0007: error running `zip` command to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }" with return code "{ zip_process.returncode }". stderr:' )
+          _log( f'🤕 ERROR ALKP ALKP0007: error running `zip` command to zip the artifacts folder at "{ folder_path }" in cwd "{ root_path }" with return code "{ zip_process.returncode }". stderr:' )
           _log( zip_process.stderr.decode( 'utf-8' ))
 
     except FileNotFoundError as zip_process_error:
       zipping_did_error = True
-      _log( f'🔎 ALKiP WARNING: could not find the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
-      import traceback
-      _log('\n'.join( traceback.format_exception( zip_process_error ) ))
+      _log( f'🔎 WARNING ALKP: could not find the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
+      _log( format_error( zip_process_error ))
       
     except Exception as zip_process_error:
       zipping_did_error = True
-      _log( f'🤕 ALKiP ERROR: subprocess errored when ALKilnInThePlayground tried to zip the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
-      import traceback
-      _log('\n'.join( traceback.format_exception( zip_process_error ) ))
+      _log( f'🤕 ERROR ALKP: subprocess errored when ALKilnInThePlayground tried to zip the artifacts folder at dir "{ folder_path }" in cwd "{ root_path }":' )
+      _log( format_error( zip_process_error ))
 
     if zipping_did_error:
       return zip_not_found_html
   
-    zip_path = get_artifacts_zip_path()['path']
-  
     if zip_process.stdout:
-      _debug(f'💡 ALKiP INFO: saved the artifacts zip file correctly to "{ zip_path }". stdout:')
+      _debug(f'''💡 INFO ALKP: saved the artifacts zip file correctly to "{ artifacts_zip_path_original }". stdout:''')
       _debug( zip_process.stdout )
 
     zip_da_file = DAFile()
     zip_da_file.initialize( filename=zip_name )
-    zip_da_file.copy_into( zip_path )
+    zip_da_file.copy_into( artifacts_zip_path_original )
     zip_da_file.commit()
   
     return f'''
         <menu>{ action_button_html( zip_da_file.url_for(), label='Download all files and folders that ALKiln created', color='primary', size='md', icon='file-zipper', new_window=True, classname='zip') }</menu>
     '''
+---
+id: artifacts downloader once
+need:
+  - get_artifacts_zip_downloader
+code: |
+  artifacts_zip_downloader = get_artifacts_zip_downloader()
 ---
 id: html section for generated randomized Scenarios
 # Discuss: Would it be useful to create a generated files zip when
@@ -1165,7 +1389,7 @@ code: |
     
     if name.endswith('.txt'):
       html = f'''<li class='text_file'>
-      <a target='_blank' href='{da_file.url_for()}'>{ name } <i class='fas fa-external-link'></i></a>)
+      <a target='_blank' href='{da_file.url_for()}'>{ name } <i class='fas fa-external-link'></i></a>
     </li>
     '''
     else:
@@ -1221,7 +1445,7 @@ template: no_tests_instructions
 need:
   - logs_more_info
 content: |
-  <div class=''no_output prose'>
+  <div class='no_output prose'>
     <p>ALKiln found no summary files (like report.txt). Maybe no tests ran. Here are some questions that might help find the problem.</p>
     <p>Does <a class='non_da_internal_link' href='#console'>the console output at the bottom of this page</a> show that the tests ran "0 scenarios"? If so:</p>
     <ul>
@@ -1238,12 +1462,8 @@ content: |
     <p>${ logs_more_info }</p>
   </div>
 ---
----
-# Wrapper state: Dynamic (artifacts)
-# TODO: Unnecessary now? Check once we have the other actions
----
 # Wrapper state: Defaults (artifacts)
-# Optional
+# None (standard state vars are in the wrapper)
 ---
 # Wrapper values: Hard-coded (artifacts)
 ---

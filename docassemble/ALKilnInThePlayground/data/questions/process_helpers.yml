@@ -4,6 +4,8 @@ include:
   - files.yml
 ---
 id: run process with canceler
+# Note: .wait() is synchronous and will deadlock when using stdout=PIPE or stderr=PIPE and the child process generates enough output to a pipe such that it blocks waiting for the OS pipe buffer to accept more data. Use Popen.communicate() when using pipes to avoid that.
+# https://docs.python.org/3/library/subprocess.html#subprocess.Popen.wait
 need:
   - _add_and_log
   - env_vars  # external
