@@ -39,6 +39,7 @@ code: |
   # .get() is None with a failed task
   x.ui.data = x.action.task.get() or {}
   # Discuss: Where along the way should we join the logs? Too early here?
+  # TODO: Add no error if ok?
   x.ui.logs = '\n'.join( x.ui.data.get('logs', [f'🤕 ALKiP ERROR: The { x.ui.description } background action errored. { logs_more_info }']) )
 
   # Consider handling `interrupted` and `repeated` here
@@ -51,6 +52,7 @@ code: |
   if x.ui.cancelled or x.ui.failed:
     # Discuss: Log logs here? Or log upstream after?
     x.action.undefine
+    # TODO: Return?
 
   # Block the `succeed` event from running infinitely
   # Note: When an event block finishes, da doesn't re-run logic.
@@ -61,7 +63,7 @@ code: |
     x.action.succeed
 
   # Discuss: Place the followup right after the action completion
-  # Discuss: Different stages of "followoup" - followup, clean, wrapup, ...?
+  # Discuss: Different stages of "followup" - followup, clean, wrapup, ...?
   x.action.followup
 
   x.action.run = True
@@ -111,7 +113,7 @@ code: |
     x.action.succeed
 
   # Discuss: Place the followup right after the action completion
-  # Discuss: Different stages of "followoup" - followup, clean, wrapup, ...?
+  # Discuss: Different stages of "followup" - followup, clean, wrapup, ...?
   x.action.followup
 
   x.action.run = True

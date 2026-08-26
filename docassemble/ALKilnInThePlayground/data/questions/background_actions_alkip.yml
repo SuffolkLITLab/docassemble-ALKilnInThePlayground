@@ -112,6 +112,7 @@ code: |
     conn_data = try_to_connect()
     npm.action.task_data['ok'] = conn_data['ok']
     npm.action.task_data['pre_logs_msg'] = conn_data['pre_logs_msg']
+    # TODO: Switch the concatenation order of the npm completion logs
     npm.action.task_data['logs'] = npm.action.task_data['logs'] + conn_data['logs']
   
   except Exception as npm_connection_attempt_error:
@@ -311,6 +312,7 @@ need:
   - made_npm_dir_successfully
   - install.action.task_data
   - install.action.cancel_key
+# TODO: To diagnose concurrency lock timeout issues, use `sleep(8)`
 code: |
   # Discuss: How do we detect if someone _else_ on the server didn't properly finish installing ALKiln and that there will be cache problems?
   
@@ -371,6 +373,7 @@ code: |
 
   except Exception as install_process_error:
     _add_and_log( install.action.task_data['logs'], [ format_error( install_process_error ), general_err_log ])
+    # TODO: Track that this task was not ok
 
   install.action.task_data['ok'] = install_process_data.get('ok', False )
   install.action.task_data['interrupted'] = install_process_data.get('interrupted', False )
@@ -411,7 +414,7 @@ need:
   - root_path
   - alkiln_session_id
 code: |
-  delete_kip_session_dir(filepath=f'{ root_path }/{ alkiln_session_id }')
+  delete_kip_session_dir( kip_dir_path=f'{ root_path }/{ alkiln_session_id }')
   install.action.followup = True
 ---
 # Screens (installing alkiln)
@@ -535,7 +538,7 @@ need:
   - kip_vars_path
   - project_name
 code: |
-  # Discuss: neccessary to pass it down this way? Is it enough to just `need` the value? Is it good to be explicit anyway?
+  # Discuss: neccessary to pass project_name down this way? Is it enough to just `need` the value? Is it good to be explicit anyway?
   tests.action.task = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name, kip_session_path=kip_vars_path)
 ---
 id: run alkiln
@@ -649,6 +652,9 @@ code: |
 
   tests.action.task_data['ok'] = tests_process_data.get('ok', False)
   tests.action.task_data['interrupted'] = tests_process_data.get('interrupted', False)
+
+  import time
+  time.sleep(8)
   
   background_response( tests.action.task_data )
 ---
@@ -658,7 +664,7 @@ need:
   - root_path
   - alkiln_session_id
 code: |
-  delete_kip_session_dir(filepath=f'{ root_path }/{ alkiln_session_id }')
+  delete_kip_session_dir( kip_dir_path=f'{ root_path }/{ alkiln_session_id }')
   tests.action.followup = True
 ---
 # Screens (test run)
@@ -914,6 +920,7 @@ objects:
 code: |
   file_problem = False
 ---
+id: get html for all artifacts
 need:
   - _debug  # shared
   - get_top_buttons  # internal
@@ -1150,14 +1157,16 @@ code: |
 ---
 id: zip section  # internal
 need:
-  - da_log_more_info
+  - _log
+  - _debug
+  - logs_more_info
   - root_path
   - folder_path
   - folder_name
   - zip_name_no_ext
   - zip_name
   - format_error
-  - artifacts_zip_path_original
+  - get_existing_path
 code: |
   import subprocess
   
@@ -1167,18 +1176,14 @@ code: |
         str: the zip download button HTML for the artifacts folder
     """
 
-    _debug(f'''💡 INFO ALKP: will try to get the artifacts zip from "{ folder_path }" (in "{ root_path }") and save the artifacts zip with the name "{ zip_name }".''' )
+    _debug(f'''💡 INFO ALKP: will try to get the artifacts from "{ folder_path }" (in "{ root_path }") and save an artifacts zip with the name "{ zip_name }".''' )
   
     zip_not_found_html = f'''
-        <div class='alkiln_error alert alert-warning'>ALKilnInThePlayground was unable to create a zip file for the test artifacts. Sorry about that. You might find more clues on this page. { da_log_more_info }</div>\n
+        <div class='alkiln_error alert alert-warning'>ALKilnInThePlayground was unable to create a zip file for the test artifacts. Sorry about that. You might find more clues on this page. { logs_more_info }</div>\n
       '''
 
     if zip_name == None:
       return zip_not_found_html
-    if artifacts_zip_path_original == None:
-      return zip_not_found_html
-  
-    _debug(f'''💡 INFO ALKP: will try to get the artifacts zip from "{ folder_path }" (in "{ root_path }") and save the artifacts zip with the name "{ zip_name }".''' )
 
     # TODO: Remove zip_name_no_ext if possible. `zip` cmd doesn't need it.
 
@@ -1218,14 +1223,23 @@ code: |
     if zipping_did_error:
       return zip_not_found_html
   
+    original_zip_path = get_existing_path( file_name=zip_name )
     if zip_process.stdout:
-      _debug(f'''💡 INFO ALKP: saved the artifacts zip file correctly to "{ artifacts_zip_path_original }". stdout:''')
+      _debug(f'''💡 INFO ALKP: saved the artifacts zip file correctly to "{ original_zip_path }". stdout:''')
       _debug( zip_process.stdout )
 
     zip_da_file = DAFile()
-    zip_da_file.initialize( filename=zip_name )
-    zip_da_file.copy_into( artifacts_zip_path_original )
+    zip_da_file.initialize( filename=zip_name )  # Same name for comfort
+    zip_da_file.copy_into( original_zip_path )  # copy_into is "copy from"
     zip_da_file.commit()
+
+    # Delete the zip we first made (the non-DAFile)
+    import os
+    try:
+      os.remove( original_zip_path )
+    except Exception as remove_zip_error:
+      _log( f'🖊️ NOTE ALKP0008: skipped removing old "{ original_zip_path }".')
+      _debug( format_error( remove_zip_error ))
   
     return f'''
         <menu>{ action_button_html( zip_da_file.url_for(), label='Download all files and folders that ALKiln created', color='primary', size='md', icon='file-zipper', new_window=True, classname='zip') }</menu>
@@ -1430,6 +1444,7 @@ code: |
     Returns:
         str: the HTML for the header of the Scenarios outputs section.
     """
+    # TODO: Copy setup interview method of adding to DAList
     scenarios = sections[ sections.number_gathered() ]
     scenarios.heading = 'Scenarios'
     scenarios.id = 'scenarios_header'

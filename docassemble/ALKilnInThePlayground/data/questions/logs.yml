@@ -175,12 +175,6 @@ code: |
     or str(debug_temp.lower()) == 'true'
   )
 ---
-# Discuss: Move this value to a shared vars yml.
-reconsider: True
-id: alkiln-related config vars
-code: |
-  alkiln_config_vars = get_config('alkiln') or {}
----
 ---
 code: |
   docassemble_log_link = f"""<a target="_blank" href="{ url_of('root', _external=True) }/logs?file=docassemble.log">docassemble.log</a>"""
