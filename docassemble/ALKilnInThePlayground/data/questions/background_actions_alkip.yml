@@ -111,8 +111,7 @@ code: |
     conn_data = try_to_connect()
     npm.action.task_data['ok'] = conn_data['ok']
     npm.action.task_data['pre_logs_msg'] = conn_data['pre_logs_msg']
-    # TODO: Switch the concatenation order of the npm completion logs
-    npm.action.task_data['logs'] = npm.action.task_data['logs'] + conn_data['logs']
+    npm.action.task_data['logs'] = conn_data['logs'] + npm.action.task_data['logs']
   
   except Exception as npm_connection_attempt_error:
     _add_and_log( npm.action.task_data['logs'], [ wrap_text( f'''🤕 ALKiP ERROR: ALKiP internal development error when trying to connect to npm.'''), format_error( npm_connection_attempt_error ) ])
@@ -311,7 +310,6 @@ need:
   - made_npm_dir_successfully
   - install.action.task_data
   - install.action.cancel_key
-# TODO: To diagnose concurrency lock timeout issues, use `sleep(8)`
 code: |
   # Discuss: How do we detect if someone _else_ on the server didn't properly finish installing ALKiln and that there will be cache problems?
   
@@ -335,7 +333,7 @@ code: |
     _add_and_log( install.action.task_data['logs'], [f'''ALKilnInThePlayground tried to re-run the `install_alkiln` task. This may be an internal ALKilnInThePlayground problem. Look in your { worker_log_link } for more clues.'''] )
 
   if not install_start_ok:
-    # @@@TODO: Stop subprocess if already running. Operations are synchronous, but The Loop isn't. Basically, set cancel and we may need to add another flag. Better to let it finish running?
+    # Discuss: Stop subprocess if already running? Q: Why would we get here again if they're already running? Operations are synchronous. Because The Loop isn't synchronouse and will cause a re-run if we accidentally have concurrency lock timeout issues here or elsewhere. Basically, set cancel and we may need to add another flag. Better to let it finish running?
     install.action.task_data['ok'] = False
     _add_and_log( install.action.task_data['logs'], [ general_err_log ])
     background_response( install.action.task_data )
@@ -369,10 +367,11 @@ code: |
   
     _debug(f'''🐛 ALKiP INFO: Finished running ALKiln installation''')
     install.action.task_data['logs'].extend( install_process_data.get('logs', []) )
+    install.action.task_data['ok'] = True
 
   except Exception as install_process_error:
     _add_and_log( install.action.task_data['logs'], [ format_error( install_process_error ), general_err_log ])
-    # TODO: Track that this task was not ok
+    install.action.task_data['ok'] = False
 
   install.action.task_data['ok'] = install_process_data.get('ok', False )
   install.action.task_data['interrupted'] = install_process_data.get('interrupted', False )
@@ -562,7 +561,7 @@ code: |
   # ------------- Guard the action -------------
 
   # `if` statement for idempotency - ensure tests are only run once
-  # TODO: Stop subprocess if already running. Operations are synchronous, but The Loop isn't. Basically, set cancel and we may need to add another flag.
+  # TODO: Stop subprocess if already running. Operations in here are basically synchronous, but The Loop isn't. Basically, set cancel and we may need to add another flag.
   if has_started_tests:
     _add_and_log(
       tests.action.task_data['logs'],
@@ -785,12 +784,13 @@ code: |
 ---
 id: version of alkiln used for the test run
 # TODO: This might belong in the main file
+# Note: Set here so we can log the test version
 need:
   - nice_time
   - _debug
 code: |
   tests.action.version = server_alkiln_version
-  _debug(f"💡 ALKiP INFO { nice_time() }: Version of ALKiln for session ID { current_context().session or 'UNKNOWN' } is v{ tests.action.version }")
+  _debug(f"💡 ALKiP INFO { nice_time() }: Version of ALKiln for tests in with session ID { current_context().session or 'UNKNOWN' } is v{ tests.action.version }")
 ---
 id: elapsed time for test run
 reconsider: True

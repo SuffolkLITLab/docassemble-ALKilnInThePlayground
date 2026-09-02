@@ -1,8 +1,10 @@
 # Contributors: JoshW, AK, WM,
+# # TODO: For scenarios = sections[ sections.number_gathered() ] in bkg...alkip.yml, copy setup interview method of adding to DAList
+# Add a button leading to the ALKiln Doctor
+# TODO: replace has_started_alkiln_install and has_started_tests with install.action.did_start, etc.
 # TODO: Reduce number of functions into plain blocks or events. Incidentally, that will allow avoiding the complex return value for getting the html.
 # TODO: Add codes to log messages.
 # TODO: It's unclear that the purpose of the link below a file is to download the file.
-# TODO: Use zip files and artifact folder **just once**. Use those to create in-interview variables. Since we delete the orginal zip files when we get to `show_output`, that should avoid showing future interview session visitors phantom errors.
 # TODO: Add "Running offline" callout to every page when offline
 # TODO: Explore alkiln_config_vars vs. env_vars vs. cusotm_env_vars vs. dangerous_conf...
 # TODO: Guard function calls for functions that are only used once with a flag. That will help us find where undefined variables are causing functions to be run repeatedly.
@@ -10,13 +12,11 @@
 # TODO: replace `raise`s with error screens
 # TODO: Add more ids, including for code blocks
 # TODO: Research check for invalid alkiln install. This seems to require testing multiple angles. `npm ls` in alkiln's folder for direct dependencies with "npm error". Maybe `npm audit signatures` maybe in .npm-global/lib/node_modules and/or maybe in alkiln's folder. Maybe `npm explain --prefix /var/www/.npm-global` (or maybe in alkiln), though I'm not sure that's the right command. To check npm itself, maybe `npm doctor --prefix /var/www/.npm-global`, though we have some stuff that already errors despite working (versions and global bin folder not in PATH).
-# TODO: Consider url args to set `install.ui.cancelled`, `install.ui.failed`, etc. when starting a new interview to persist status of ALKiln package. Explore server-wide options for those.
-# TODO: Only install ALKiln when no one on the server is running tests. Conversley, don't run tests until an ALKiln install on the server is finished.
+# TODO: Only install ALKiln when no one on the server is running tests. Conversley, don't run tests until an ALKiln install on the server is finished. Look at the Doctor/ALKiln dashboard for detecting running ALKiln tests.
 # TODO: Match npm error errno -39 npm error ENOTEMPTY: directory not empty (must delete node_modules dir, (no pkg.json), maybe npm cache clean --force? (again, no, and re-install ALKiln)
 # TODO: ~~Use new abstractions with test runs.~~ Put in background actions: ~npm connection check~, ~making final page html~, ~install~, x~generating random~x (generating 200 randomized tests takes very little time), getting news, removing files.
 # TODO: Examine styles for `id="console"` elements
 # TODO: Ensure npm_connection_msg is only evaluated under some circumstances when showing the project choosing page
-# TODO: Add to final screen - time elapsed generating files
 # # TODO: Put these comments into an issue or discussion
 # Invalid ALKiln version notes: There are 3 ways in which an ALKiln installation can be invalid.
 # 1. Invalid: `server_alkiln_version` can fail (the first time this package runs on a server, among other reasons). Must install to resolve.
@@ -24,8 +24,7 @@
 # 3. Unsure: `install.ui.cancelled`. Can continue with warnings since the installation may have finished before the author cancelled it.
 # This state is not yet persistent across sessions.
 # We must handle the case where an author skips the installation screen.
-# When the author cancels we must kill the installation processes. Note that we want to avoid a background action for that since installation will already be using a background action and some servers don't have room for more than one background action at a time.
-# @@@ TODO: Put in issue when GitHub is working
+# TODO: Put in issue when GitHub is working
 # To get output out of a subprocess while it runs, potentially:
 # https://www.digitaldesignjournal.com/subprocess-communicate/
 # import subprocess
@@ -47,11 +46,11 @@
 # # Wait for the subprocess to finish and get its return code
 # return_code = process.wait()
 # print(f"Subprocess returned with exit code: {return_code}")
+# TODO: Separate install into its own page, maybe through the doctor. If ALKiln package problem, show install screen before they can test the project. When offline and package ok, in install interview show they can't install & on projects page disable "install" button (Can we add help text to a button? Or help text for the page? Dynamically). When package not ok and offline, show install page with message that can't install or do tests right now.
+# TODO: When moving 'Install' to its own interview, add an 'Install new version' button to the Project choosing page
 
-# Discuss: Also put these in background actions: getting news, removing files.
-# Discuss: Separate install into its own page, maybe through the doctor. If ALKiln package problem, show install screen before they can test the project. When offline and package ok, in install interview show they can't install & on projects page disable "install" button (Can we add help text to a button? Or help text for the page? Dynamically). When package not ok and offfline, show install page with message that can't install or do tests right now.
 # Discuss: Show the user's username to them? Not great for recording anonymized runs through the interview, but it would put the information front and center. People have gotten confused before when exploring other user's sessions and, I believe, Projects.
-# Discuss: Allow authors to run tests in other people's Playgrounds when they have permissions to open sessions and Playgrounds of other users while they are exploring those Playgrounds.
+# Discuss: Allow authors to run tests in other people's Playgrounds when they have permissions to open sessions and Playgrounds of other users while they are exploring those Playgrounds. That is, instead of listing the user's Projects, list the Projects of the user account being explored.
 # Discuss: Make names.yml for safe names, timestamps, etc? strings.yml? special_strings.yml? text.yml instead? Include text manipulation?
 # Discuss: (needs re-confirmation with new version) for some reason (at least when I switch between online and offline) we sometimes go to the install screen when going back to restart with a version number of "None". There are other shenanigans that happen when going back with `restart`. We have a lot to explore there. There are enough hiccups that it may be worth adding a warning when the author has been offline.
 # Discuss: Add ALKiP session ID to the artifacts
@@ -86,6 +85,12 @@ default screen parts:
     Start time: **${ start_time().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] }**
     
     See guides for writing tests in the [ALKiln documentation](https://assemblyline.suffolklitlab.org/docs/alkiln/writing/).
+---
+# TODO: Move this, perhaps to the bottom, or perhaps to top with metadata
+# Discuss: ALKiln v wording might be shorter: 'Your server thinks you have **ALKiln v{${'. Would term work well there? Can keys of terms use regex? A: I believe not, but you can match to multiple terms. See docs. That wouldn't help us match version nums, though. Alt: '{Your server thinks you have} **ALKiln v'
+terms:
+  your current version of ALKiln: |
+    This version number may change when a page loads or reloads after either you or someone else on your server installs a different version of ALKiln.
 ---
 features:
   css:
@@ -179,7 +184,7 @@ code: |
     _debug( 'One of the setup steps errored' )
     # TODO: If we expect ALKiln to have the necessary scripts
     # then show the error on final screen
-    # TODO: The below is used twice. Abstract it.
+    # TODO: The below is used twice and is messy. Abstract it.
     if not artifacts.action.phase in ('failed', 'succeeded', 'cancelled'):
       artifacts.action.run
   
@@ -406,24 +411,10 @@ comment: |
   For when we check for an invalid ALKiln install:
   It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and that installation got interrupted at a bad time. You need a new version of ALKiln.
 ---
-# TODO: Move this, perhaps to the bottom, or perhaps to top with metadata
-# Discuss: ALKiln v wording might be shorter: 'Your server thinks you have **ALKiln v${'. Would term work well there?
-# Q: Can keys of terms use regex? A: I believe not, but you can match to multiple terms. See docs. That wouldn't help us match against version nums
-terms:
-  your current version of ALKiln: |
-    This version number may change when a page loads or reloads after either you or someone else on your server installs a different version of ALKiln.
----
-id: temp explanation of version change reasons
-# TODO: move to hard-coded values?
-# This is instead of logic that would detect when the version changed since we plan to properly handle controlling individual versions later.
-template: ways_version_updates
-content: |
-  This version number may change when a page loads or reloads after either you or someone else on your server installs a different version of ALKiln.
----
 # TODO: Move closer to other ask_version blocks
-# TODO: Test these different versions of the first page show up at the right times
+# TODO: More thoroughly test that these different versions of the first page show up at the right times
 # TODO: Switch to console copy functionality when we implement that. Include text conversion to preserve links, etc.
-# TODO: Is there a more robust version of text replacing? '<a' is too ambiguous
+# TODO: Is there a more robust version of text replacing? '<a' has proven sometimes too ambiguous
 id: pick which task, with offline and no alkiln installed
 event: ask_version
 need:
@@ -455,11 +446,16 @@ terms:
   a version of ALKiln: |
     ${ ways_version_updates }
 ---
+id: temp explanation of version change reasons
+# This is a placeholder. In future, we hope to use logic that would detect when the version changed to properly handle controlling per-author versions.
+template: ways_version_updates
+content: |
+  This version number may change when a page loads or reloads after either you or someone else on your server installs a different version of ALKiln.
+---
 # TODO: Change pre_install_request to front_page, and post_install to pre_install
 # TODO: Double check if we need `if` around news request
 # Discuss: Add explicit refresh button
-# Upstream bug?: Adding a check for truthy or True value at the end causes an error that 'fr' translation file is missing on the local server
-# TODO: Delete alkp session folder after each background action. Also consider storing the folder in the Project itself.
+# TODO: Consider storing alkp session folder in the Project itself.
 id: which task but with pre-existing version
 continue button field: ask_version
 need:
@@ -467,6 +463,7 @@ need:
   - server_alkiln_version
   - install.ui.cancelled
   - install.ui.failed
+# Upstream bug?: Adding a check for truthy or True value at the end causes an error that 'fr' translation file is missing on the local server
 if: |
   not 'Could not get' in server_alkiln_version and not install.ui.cancelled and not install.ui.failed
 question: |
@@ -827,7 +824,7 @@ code: |
 ---
 # TODO: Move above install and news? (Pre-start)
 # Discuss: Should this be in the helpers section?
-# Discuss: Should this be reconsidered?
+# Discuss: Should this really be reconsidered? It could get out of date, though... Bah! External uncontrolled data!
 reconsider: True
 id: alkiln-related config vars
 code: |
@@ -1128,10 +1125,6 @@ need:
   - delete_kip_session_dir
   - format_error
 code: |
-  # TODO: Ensure this block runs regardless of the outcome just in case it
-  # can manage to clean something up. Avoid erroring. These steps aren't
-  # crucial.
-
   removal_logs = []
 
   _add_and_debug( removal_logs, "💡 INFO ALKP: Removing original artifacts files" )
@@ -1145,6 +1138,7 @@ code: |
       _add_and_debug( removal_logs, format_error( remove_artifacts_error ))
   folder_path = None
 
+  # TODO: Can we retire removing old chrome processes at this point? I'm concerned about potential future issues. Consult with others. Perhaps set an age limit here as well.
   # TODO: Research whether we're deleting the connections of all server devs
   # https://stackoverflow.com/a/32949415/14144258
   import glob
@@ -1224,7 +1218,7 @@ subquestion: |
   </div>
 buttons:
   # Keep exit button to give the page the #daform selector as da bases some styles on that selector
-  - Exit: exit  # TODO: Exit to server? Check.
+  - Exit: exit
 action buttons:
   - label: Run new tests
     action: do_skip_install_session
@@ -1392,7 +1386,7 @@ content: |
 # Filepaths
 ---
 reconsider: True
-# TODO: Research why this is `reconsider`ed. If a server dev deletes the server config file after the tests have already completed (with a folder path problem (see the show_output screen)), the problem message could send authors on a wild goose chase.
+# TODO: Research why this is `reconsider`ed. If a server dev deletes the server config file after the tests have already completed (with a folder path problem (see the show_output screen)), the problem message could send authors on a wild goose chase. Test this theory.
 # Discuss: If we do want to recalculate, change this into an event? And move the function into this block.
 need:
   - get_config_path
@@ -1406,7 +1400,6 @@ code: |
 ---
 id: get path of alkiln runtime config file
 # Discuss: change this into an event
-# TODO: Ensure we're catching errors in the install action so we are cancelling safely on errors.
 need:
   - _log
   - get_existing_path

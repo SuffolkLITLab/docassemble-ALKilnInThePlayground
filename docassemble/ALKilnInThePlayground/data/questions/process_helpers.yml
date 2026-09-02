@@ -138,10 +138,9 @@ code: |
       stds = process.communicate( timeout=0.5 )
       returncode = process.returncode
 
-    # @@@ TODO: Discuss: `ok` = False is an error with subprocess. Also, an error within a
-    # process, otherwise how do we let the caller know something went wrong?
+    # Discuss: `ok` = False is doing double duty - an error with subprocess bad return code and an error within a process. But otherwise how do we let the caller know something went wrong?
   
-    # `ok` of False is a non-killed/terminated/successful attempt at the process
+    # `ok` of False is a non-killed/terminated/successfully completed-but-bad-returncode attempt at the process
     if not returncode in [ -9, -15, 0 ]:
       ok = False
     interrupted = False
