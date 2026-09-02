@@ -13,7 +13,7 @@
 # TODO: Consider url args to set `install.ui.cancelled`, `install.ui.failed`, etc. when starting a new interview to persist status of ALKiln package. Explore server-wide options for those.
 # TODO: Only install ALKiln when no one on the server is running tests. Conversley, don't run tests until an ALKiln install on the server is finished.
 # TODO: Match npm error errno -39 npm error ENOTEMPTY: directory not empty (must delete node_modules dir, (no pkg.json), maybe npm cache clean --force? (again, no, and re-install ALKiln)
-# TODO: ~~Use new abstractions with test runs.~~ Put in background actions: ~npm connection check~, ~making final page html~, ~install~, ~generating random~, getting news, removing files. 
+# TODO: ~~Use new abstractions with test runs.~~ Put in background actions: ~npm connection check~, ~making final page html~, ~install~, x~generating random~x (generating 200 randomized tests takes very little time), getting news, removing files.
 # TODO: Examine styles for `id="console"` elements
 # TODO: Ensure npm_connection_msg is only evaluated under some circumstances when showing the project choosing page
 # TODO: Add to final screen - time elapsed generating files

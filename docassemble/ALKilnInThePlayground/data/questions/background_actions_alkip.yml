@@ -58,11 +58,10 @@ include:
 # ##################################
 ---
 objects:
+  npm: DAObject
   install: DAObject
   tests: DAObject
   artifacts: DAObject
-  npm: DAObject
-  generation: DAObject
 ---
 ---
 ---
@@ -652,9 +651,6 @@ code: |
 
   tests.action.task_data['ok'] = tests_process_data.get('ok', False)
   tests.action.task_data['interrupted'] = tests_process_data.get('interrupted', False)
-
-  import time
-  time.sleep(8)
   
   background_response( tests.action.task_data )
 ---
