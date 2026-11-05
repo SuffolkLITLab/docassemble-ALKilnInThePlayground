@@ -957,7 +957,12 @@ action buttons:
     color: warning
 ---
 code: |
-  from docassemble.webapp.files import SavedFile
+  try:
+    # docassemble version >= 1.10.0
+    from docassemble.webapp.files.savedfile import SavedFile
+  except ImportError:
+    # docassemble version < 1.10.0
+    from docassemble.webapp.files import SavedFile
 
   def get_list_of_projects(user_id):
     """
@@ -1056,7 +1061,7 @@ code: |
     SavedFile(user_info().id, fix=True, section='playgroundsources')
 
     sources_arg = f'--sources={ sources }'
-    log(f"""💡 ALKiln INFO: sources path: { sources }""")
+    log(f"""💡 ALKiP INFO: sources path: { sources }""")
   
     tags = action_argument('tag_expression')
   
@@ -1123,28 +1128,29 @@ code: |
       # action, even when the task is revoked, so we can kill
       # the process
       test_run_pid = process.pid
-      log(f"""💡 ALKP0023 INFO: Starting ALKiln tests with process ID { test_run_pid }. This process will run for a maximum of { max_run_time } seconds""" )
+      log(f"""💡 ALKiP ALKP0023 INFO: Starting ALKiln tests with process ID { test_run_pid }. This process will run for a maximum of { max_run_time } seconds""" )
 
       start_process_wait_time = current_datetime()
       
       try:
         # Get output tuple: `(stdout_data, stderr_data)`
         # As a last resort, the processes will timeout
-        test_output = process.communicate( timeout=max_run_time )
+        test_output = process.communicate( timeout=int( max_run_time ) )
         returncode = process.returncode
       except subprocess.TimeoutExpired:
         # Example use of this exception:
         # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/ef5dd232b0a3557fd4b8e9185883e0ecc6a161bb/docassemble/AssemblyLine/al_document.py#L2842-L2850
-        timeout_output = f'🤕 ALKiln ERROR ALKP0006: the tests run with the pid { test_run_pid } ran for over { date_difference( starting=start_process_wait_time, ending=current_datetime() ).seconds } seconds. The maximum time allowed is { max_run_time } seconds. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` section and giving it a different value.'
+        timeout_output = f'🤕 ALKiP ERROR ALKP0006: the tests run with the pid { test_run_pid } ran for over { date_difference( starting=start_process_wait_time, ending=current_datetime() ).seconds } seconds. The maximum time allowed is { max_run_time } seconds. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` section and giving it a different value.'
         log(timeout_output)
-      except Exception as error:
-        log('🤕 ALKiln ERROR ALKP0010: Error while running tests:')
-        log(error)
+      except Exception as communicate_err:
+        log('🤕 ALKiP ERROR ALKP0010: Error while running tests:')
+        import traceback
+        log('\n'.join( traceback.format_exception( communicate_err ) ))
 
     except subprocess.TimeoutExpired:
       # Example use of this exception:
       # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/ef5dd232b0a3557fd4b8e9185883e0ecc6a161bb/docassemble/AssemblyLine/al_document.py#L2842-L2850
-      timeout_output = f'🤕 ALKiln ERROR ALKP0012: the tests run with the pid { test_run_pid } ran for over { date_difference( starting=start_process_wait_time, ending=current_datetime() ).seconds } seconds. The maximum time allowed is { max_run_time } seconds. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` section and giving it a different value.'
+      timeout_output = f'🤕 ALKiP ERROR ALKP0012: the tests run with the pid { test_run_pid } ran for over { date_difference( starting=start_process_wait_time, ending=current_datetime() ).seconds } seconds. The maximum time allowed is { max_run_time } seconds. You can change the maximum time by adding the `{ timeout_env_var_name }` value to your config\'s `alkiln` section and giving it a different value.'
       log(timeout_output)
   
     except Exception as test_run_error:
@@ -1177,12 +1183,12 @@ code: |
           # complete the process itself. Low level interface.
           process.wait()
         else:
-          log(f"""🤕 ALKiln ERROR: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by a value in the server config under the `alkiln` key that has a non-string value. It often comes with a message similar to "expected str, bytes or os.PathLike object, not bool". To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository.""")
+          log(f"""🤕 ALKiP ERROR: The test process ended early and the process ID is missing. Get in touch with us. If you want to experiment, in the past this problem has been caused by a value in the server config under the `alkiln` key that has a non-string value. It often comes with a message similar to "expected str, bytes or os.PathLike object, not bool". To dig even deeper, check the `run_alkiln` block in the ALKilnInThePlayground repository.""")
       except ProcessLookupError as already_terminated_error:
         # An already terminated process is a happy process
         pass
       except Exception as termination_error:
-        log('🤕 ALKiln ERROR ALKP0011: Error while stopping tests:')
+        log('🤕 ALKiP ERROR ALKP0011: Error while stopping tests:')
         log("\n".join( traceback.format_exception( termination_error ) ))
         
       # === Output ===
@@ -1207,7 +1213,7 @@ code: |
 
       ## Discuss: This seems like too much to put in the logs, but if things go
       ## too badly wrong, this might be the only available info from the tests.
-      # log(f"""💡 ALKiln INFO: ALKiln test run output:\n{ output_main }""" )
+      # log(f"""💡 ALKiP INFO: ALKiln test run output:\n{ output_main }""" )
 
       background_response( f"ALKilnInThePlayground proccess id: { test_run_pid }\n\n{ output_main }" )
 ---
